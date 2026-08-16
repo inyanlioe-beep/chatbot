@@ -845,7 +845,7 @@ elements.settingsForm.addEventListener("submit", (event) => {
     model: elements.modelInput.value.trim(),
     systemPrompt: elements.systemPromptInput.value.trim(),
     temperature: Number.isFinite(temperature) ? Math.min(2, Math.max(0, temperature)) : 0.7,
-    maxTokens: Number.isFinite(maxTokens) ? Math.min(32768, Math.max(1, Math.round(maxTokens))) : 2048
+    maxTokens: Number.isFinite(maxTokens) ? Math.min(65536, Math.max(1, Math.round(maxTokens))) : 2048
   };
   saveSettings();
   updateModelLabel();

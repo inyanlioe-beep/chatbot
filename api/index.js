@@ -221,7 +221,7 @@ async function proxyChat(request, res, config) {
     messages,
     stream: true,
     temperature: Number.isFinite(temperature) ? Math.min(2, Math.max(0, temperature)) : 0.7,
-    max_tokens: Number.isFinite(maxTokens) ? Math.min(32768, Math.max(1, Math.round(maxTokens))) : 2048
+    max_tokens: Number.isFinite(maxTokens) ? Math.min(65536, Math.max(1, Math.round(maxTokens))) : 2048
   };
 
   const controller = new AbortController();
