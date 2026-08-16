@@ -1,0 +1,168 @@
+<!doctype html>
+<html lang="id">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#f5f1e9" />
+    <meta name="description" content="Chatbot personal yang terhubung secara aman ke AgentRouter." />
+    <title>Ruang AI — AgentRouter Chat</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css" />
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar" id="sidebar" aria-label="Riwayat percakapan">
+        <div class="brand-row">
+          <a class="brand" href="/" aria-label="Ruang AI">
+            <span class="brand-mark" aria-hidden="true">R</span>
+            <span>Ruang AI</span>
+          </a>
+          <button class="close-sidebar" id="closeSidebarButton" type="button" aria-label="Tutup menu" title="Tutup menu">×</button>
+        </div>
+
+        <button class="new-chat-button" id="newChatButton" type="button">
+          <span aria-hidden="true">＋</span>
+          Chat baru
+        </button>
+
+        <label class="search-box" for="searchInput">
+          <span class="search-label">Cari</span>
+          <input id="searchInput" type="search" placeholder="Cari percakapan" autocomplete="off" />
+        </label>
+
+        <div class="history-heading">Percakapan</div>
+        <nav class="conversation-list" id="conversationList" aria-label="Daftar percakapan"></nav>
+
+        <div class="sidebar-footer">
+          <button class="sidebar-settings" id="settingsButton" type="button">
+            <span>Pengaturan</span>
+            <span class="connection-dot" id="sidebarStatusDot" aria-hidden="true"></span>
+          </button>
+          <p>API key tersimpan di server, bukan browser.</p>
+        </div>
+      </aside>
+
+      <main class="main-panel">
+        <header class="topbar">
+          <button class="menu-button" id="menuButton" type="button" aria-label="Buka menu" title="Buka menu">☰</button>
+          <div class="model-summary">
+            <span class="eyebrow">Model aktif</span>
+            <button id="modelButton" type="button" title="Buka pengaturan model">
+              <span id="activeModelLabel">Memuat…</span>
+              <span aria-hidden="true">⌄</span>
+            </button>
+          </div>
+          <button class="theme-toggle" id="themeToggle" type="button" aria-label="Ubah tema" title="Ubah tema">
+            <span class="theme-icon" aria-hidden="true">🌙</span>
+          </button>
+          <div class="status-pill" id="connectionStatus">
+            <span class="connection-dot" aria-hidden="true"></span>
+            <span id="connectionText">Memeriksa koneksi</span>
+          </div>
+        </header>
+
+        <section class="chat-scroll" id="chatScroll" aria-live="polite">
+          <div class="welcome-view" id="welcomeView">
+            <div class="welcome-mark" aria-hidden="true">R</div>
+            <p class="eyebrow">Terhubung lewat AgentRouter</p>
+            <h1>Apa yang ingin kamu selesaikan?</h1>
+            <p class="welcome-copy">Mulai dari pertanyaan sederhana, merangkum ide, sampai membantu menulis dan membuat kode.</p>
+            <div class="suggestion-grid" id="suggestionGrid">
+              <button type="button" data-prompt="Bantu saya menyusun rencana kerja untuk minggu ini secara realistis.">
+                <span>Susun rencana</span>
+                <small>Buat langkah kerja yang realistis</small>
+              </button>
+              <button type="button" data-prompt="Jelaskan konsep yang rumit dengan bahasa sederhana dan berikan contoh.">
+                <span>Jelaskan konsep</span>
+                <small>Belajar dengan bahasa yang mudah</small>
+              </button>
+              <button type="button" data-prompt="Tinjau ide berikut dan tunjukkan risiko serta cara memperbaikinya: ">
+                <span>Tinjau ide</span>
+                <small>Dapatkan kritik yang bisa ditindaklanjuti</small>
+              </button>
+              <button type="button" data-prompt="Bantu saya menulis kode yang bersih untuk kebutuhan berikut: ">
+                <span>Bantu coding</span>
+                <small>Rancang solusi dan implementasinya</small>
+              </button>
+            </div>
+          </div>
+          <div class="message-list" id="messageList"></div>
+        </section>
+
+        <footer class="composer-area">
+          <form class="composer" id="chatForm">
+            <textarea id="messageInput" rows="1" placeholder="Ketik pesan untuk AgentRouter…" aria-label="Pesan"></textarea>
+            <div class="composer-actions">
+              <span class="composer-hint">Enter untuk kirim · Shift+Enter untuk baris baru</span>
+              <button class="send-button" id="sendButton" type="submit">Kirim <span aria-hidden="true">↗</span></button>
+              <button class="stop-button" id="stopButton" type="button" hidden>Hentikan</button>
+            </div>
+          </form>
+          <p class="disclaimer">AI dapat membuat kesalahan. Periksa kembali informasi penting.</p>
+        </footer>
+      </main>
+    </div>
+
+    <div class="sidebar-backdrop" id="sidebarBackdrop"></div>
+
+    <dialog class="settings-dialog" id="settingsDialog">
+      <form method="dialog" class="settings-panel" id="settingsForm">
+        <div class="settings-header">
+          <div>
+            <p class="eyebrow">Konfigurasi percakapan</p>
+            <h2>Pengaturan</h2>
+          </div>
+          <button class="dialog-close" id="closeSettingsButton" type="button" aria-label="Tutup pengaturan" title="Tutup">×</button>
+        </div>
+
+        <div class="config-banner" id="configBanner">
+          <span class="connection-dot" aria-hidden="true"></span>
+          <div>
+            <strong id="configBannerTitle">Memeriksa server</strong>
+            <p id="configBannerText">Menunggu informasi konfigurasi.</p>
+          </div>
+        </div>
+
+        <label class="field">
+          <span>Model</span>
+          <input id="modelInput" name="model" list="modelList" autocomplete="off" placeholder="contoh: gpt-4o-mini" />
+          <datalist id="modelList"></datalist>
+          <small>Isi dengan ID model yang tersedia di akun AgentRouter Anda.</small>
+        </label>
+
+        <label class="field">
+          <span>System prompt</span>
+          <textarea id="systemPromptInput" name="systemPrompt" rows="4" placeholder="Atur gaya dan perilaku asisten…"></textarea>
+        </label>
+
+        <div class="field-row">
+          <label class="field">
+            <span>Temperature</span>
+            <input id="temperatureInput" name="temperature" type="number" min="0" max="2" step="0.1" />
+            <small>0 lebih konsisten, 2 lebih kreatif.</small>
+          </label>
+          <label class="field">
+            <span>Maks. token</span>
+            <input id="maxTokensInput" name="maxTokens" type="number" min="1" max="32768" step="1" />
+            <small>Batas panjang jawaban.</small>
+          </label>
+        </div>
+
+        <label class="field">
+          <span>Base URL server</span>
+          <input id="baseUrlInput" type="text" readonly />
+          <small>Ubah nilai ini melalui <code>AGENTROUTER_BASE_URL</code> di file <code>.env</code>.</small>
+        </label>
+
+        <div class="settings-actions">
+          <button class="secondary-button" id="refreshModelsButton" type="button">Muat daftar model</button>
+          <button class="primary-button" value="default" type="submit">Simpan pengaturan</button>
+        </div>
+      </form>
+    </dialog>
+
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
+    <script src="/app.js" defer></script>
+  </body>
+</html>
