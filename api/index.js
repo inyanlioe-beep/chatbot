@@ -324,11 +324,11 @@ async function handler(request, response) {
   return sendJson(response, 404, { error: "Route frontend tidak ditemukan." });
 }
 
-module.exports = {
-  handler,
-  loadEnvFile,
-  parseJsonBody,
-  readConfig,
-  resolveApiUrl,
-  validateMessages
-};
+module.exports = handler;
+module.exports.handler = handler;
+module.exports.default = handler;
+module.exports.loadEnvFile = loadEnvFile;
+module.exports.parseJsonBody = parseJsonBody;
+module.exports.readConfig = readConfig;
+module.exports.resolveApiUrl = resolveApiUrl;
+module.exports.validateMessages = validateMessages;
