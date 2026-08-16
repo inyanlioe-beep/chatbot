@@ -22,21 +22,21 @@
 
 :root[data-theme="dark"] {
   color-scheme: dark;
-  --canvas: #070b10;
-  --canvas-strong: #101821;
-  --surface: rgba(15, 23, 34, 0.84);
-  --surface-strong: #111827;
-  --surface-muted: #0f1726;
-  --sidebar: rgba(12, 17, 25, 0.92);
-  --sidebar-muted: #a7b5c8;
-  --ink: #edf4ff;
-  --muted: #9aa9ba;
-  --line: rgba(148, 163, 184, 0.17);
+  --canvas: #030609;
+  --canvas-strong: #0d121a;
+  --surface: rgba(13, 18, 26, 0.86);
+  --surface-strong: #0f172c;
+  --surface-muted: #0a0f17;
+  --sidebar: rgba(9, 13, 20, 0.98);
+  --sidebar-muted: #a8b8d0;
+  --ink: #f0f6ff;
+  --muted: #96a5ba;
+  --line: rgba(100, 120, 160, 0.15);
   --accent: #5de2c2;
-  --accent-dark: #2ec9a9;
-  --accent-pale: #113d36;
-  --danger: #f1827d;
-  --shadow: 0 24px 70px rgba(2, 6, 18, 0.55);
+  --accent-dark: #2ecaa5;
+  --accent-pale: #0f3d34;
+  --danger: #f1857a;
+  --shadow: 0 32px 80px rgba(0, 2, 8, 0.64);
 }
 
 * {
@@ -57,8 +57,9 @@ body {
 
 :root[data-theme="dark"] body {
   background:
-    radial-gradient(circle at top, rgba(93, 226, 194, 0.11), transparent 28%),
-    linear-gradient(180deg, #070b10 0%, #0d141d 100%);
+    radial-gradient(circle at top -20%, rgba(93, 226, 194, 0.08), transparent 35%),
+    radial-gradient(circle at bottom 20% right 10%, rgba(46, 202, 165, 0.04), transparent 50%),
+    linear-gradient(180deg, #030609 0%, #0b0f18 50%, #0a0d14 100%);
 }
 
 button,
@@ -334,7 +335,8 @@ textarea:focus-visible {
 }
 
 :root[data-theme="dark"] .topbar {
-  background: rgba(15, 23, 42, 0.52);
+  background: rgba(9, 13, 20, 0.52);
+  border-bottom-color: rgba(93, 226, 194, 0.1);
 }
 
 .menu-button {
@@ -405,20 +407,40 @@ textarea:focus-visible {
 }
 
 .theme-toggle {
-  border: 0;
-  background: transparent;
+  border: 1px solid rgba(93, 226, 194, 0.15);
+  background: rgba(255, 255, 255, 0.08);
   color: var(--muted);
   cursor: pointer;
-  font-size: 18px;
-  padding: 6px 8px;
+  font-size: 16px;
+  padding: 7px 9px;
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: color 150ms ease;
+  border-radius: 10px;
+  transition: all 200ms ease;
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.08);
 }
 
 .theme-toggle:hover {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(93, 226, 194, 0.28);
   color: var(--ink);
+  transform: translateY(-1px);
+  box-shadow: 0 6px 16px rgba(15, 23, 42, 0.12);
+}
+
+:root[data-theme="dark"] .theme-toggle {
+  background: rgba(93, 226, 194, 0.08);
+  border-color: rgba(93, 226, 194, 0.18);
+  color: rgba(255, 255, 255, 0.7);
+  box-shadow: 0 6px 20px rgba(93, 226, 194, 0.04);
+}
+
+:root[data-theme="dark"] .theme-toggle:hover {
+  background: rgba(93, 226, 194, 0.14);
+  border-color: rgba(93, 226, 194, 0.35);
+  color: #5de2c2;
+  box-shadow: 0 8px 24px rgba(93, 226, 194, 0.1);
 }
 
 .theme-icon {
@@ -442,6 +464,10 @@ textarea:focus-visible {
   padding: 50px 0 65px;
 }
 
+:root[data-theme="dark"] .welcome-view {
+  background: linear-gradient(180deg, rgba(3, 6, 9, 0.4), rgba(10, 15, 24, 0.2));
+}
+
 .welcome-mark {
   width: 48px;
   height: 48px;
@@ -459,6 +485,17 @@ textarea:focus-visible {
   font-weight: 500;
   letter-spacing: -0.045em;
   line-height: 1.03;
+  background: linear-gradient(135deg, var(--ink) 0%, var(--muted) 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+:root[data-theme="dark"] .welcome-view h1 {
+  background: linear-gradient(135deg, #f0f6ff 0%, #a8b8d0 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
 }
 
 .welcome-copy {
@@ -496,14 +533,15 @@ textarea:focus-visible {
 }
 
 :root[data-theme="dark"] .suggestion-grid button {
-  background: linear-gradient(180deg, rgba(17, 24, 39, 0.78), rgba(12, 17, 25, 0.9));
-  border-color: rgba(148, 163, 184, 0.15);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.02), 0 16px 32px rgba(2, 6, 18, 0.25);
+  background: linear-gradient(135deg, rgba(20, 32, 52, 0.8), rgba(13, 18, 26, 0.92));
+  border-color: rgba(93, 226, 194, 0.12);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03), 0 18px 40px rgba(0, 2, 8, 0.32);
 }
 
 :root[data-theme="dark"] .suggestion-grid button:hover {
-  border-color: rgba(93, 226, 194, 0.28);
-  background: linear-gradient(180deg, rgba(20, 31, 45, 0.92), rgba(12, 17, 25, 0.98));
+  border-color: rgba(93, 226, 194, 0.32);
+  background: linear-gradient(135deg, rgba(25, 42, 68, 0.95), rgba(15, 22, 35, 0.98));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04), 0 24px 48px rgba(93, 226, 194, 0.12);
 }
 
 .suggestion-grid span,
