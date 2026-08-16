@@ -77,7 +77,31 @@ function sendJson(res, statusCode, payload) {
   return { statusCode, payload };
 }
 
-function parseJsonBody(request) {
+async function parseJsonBody(request) {
+  if (!request) return {};
+
+  if (typeof request.text === "function") {
+    const rawBody = await request.text();
+    if (!rawBody) return {};
+
+    try {
+      return JSON.parse(rawBody);
+    } catch {
+      throw Object.assign(new Error("Body harus berupa JSON yang valid."), { statusCode: 400 });
+    }
+  }
+
+  if (typeof request.body?.getReader === "function") {
+    const text = await new Response(request.body).text();
+    if (!text) return {};
+
+    try {
+      return JSON.parse(text);
+    } catch {
+      throw Object.assign(new Error("Body harus berupa JSON yang valid."), { statusCode: 400 });
+    }
+  }
+
   return new Promise((resolve, reject) => {
     let body = "";
     request.on("data", (chunk) => {
@@ -303,6 +327,7 @@ async function handler(request, response) {
 module.exports = {
   handler,
   loadEnvFile,
+  parseJsonBody,
   readConfig,
   resolveApiUrl,
   validateMessages

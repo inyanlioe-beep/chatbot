@@ -132,3 +132,15 @@ test("handler Vercel menanggapi /api/config dan /api/models dengan payload yang 
     }
   }
 });
+
+test("parseJsonBody menerima request berbasis Web Request seperti Vercel", async () => {
+  const { parseJsonBody } = require("../api/index");
+  const request = new Request("https://example.com/api/chat", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ messages: [{ role: "user", content: "Halo" }] })
+  });
+
+  const payload = await parseJsonBody(request);
+  assert.deepEqual(payload.messages, [{ role: "user", content: "Halo" }]);
+});
