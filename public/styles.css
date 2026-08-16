@@ -22,21 +22,21 @@
 
 :root[data-theme="dark"] {
   color-scheme: dark;
-  --canvas: #060911;
-  --canvas-strong: #0b0f19;
-  --surface: rgba(15, 23, 36, 0.72);
-  --surface-strong: #0f172a;
-  --surface-muted: rgba(15, 23, 42, 0.5);
-  --sidebar: rgba(9, 13, 22, 0.88);
+  --canvas: #020408;
+  --canvas-strong: #070b14;
+  --surface: rgba(10, 15, 26, 0.78);
+  --surface-strong: #0b1120;
+  --surface-muted: rgba(8, 12, 20, 0.6);
+  --sidebar: rgba(5, 8, 15, 0.92);
   --sidebar-muted: #94a3b8;
   --ink: #f8fafc;
   --muted: #94a3b8;
-  --line: rgba(255, 255, 255, 0.08);
+  --line: rgba(255, 255, 255, 0.07);
   --accent: #2dd4bf;
   --accent-dark: #14b8a6;
-  --accent-pale: rgba(45, 212, 191, 0.12);
+  --accent-pale: rgba(45, 212, 191, 0.1);
   --danger: #f87171;
-  --shadow: 0 24px 60px -12px rgba(0, 0, 0, 0.75), 0 0 30px rgba(45, 212, 191, 0.06);
+  --shadow: 0 24px 60px -12px rgba(0, 0, 0, 0.9), 0 0 30px rgba(45, 212, 191, 0.05);
 }
 
 * {
@@ -57,10 +57,9 @@ body {
 
 :root[data-theme="dark"] body {
   background:
-    radial-gradient(circle at 12% 15%, rgba(45, 212, 191, 0.12), transparent 38%),
-    radial-gradient(circle at 88% 80%, rgba(56, 189, 248, 0.1), transparent 42%),
-    radial-gradient(circle at 50% 40%, rgba(20, 184, 166, 0.05), transparent 55%),
-    linear-gradient(180deg, #060911 0%, #090e1a 50%, #060810 100%);
+    radial-gradient(circle at 12% 15%, rgba(45, 212, 191, 0.07), transparent 38%),
+    radial-gradient(circle at 88% 80%, rgba(56, 189, 248, 0.05), transparent 42%),
+    linear-gradient(180deg, #020408 0%, #050811 50%, #020407 100%);
   background-attachment: fixed;
 }
 
