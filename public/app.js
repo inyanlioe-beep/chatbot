@@ -103,7 +103,7 @@ function saveSettings() {
 
 function loadTheme() {
   const saved = localStorage.getItem("ruang_ai_theme");
-  const theme = saved || (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+  const theme = saved || "dark";
   state.theme = theme;
   setTheme(theme);
 }

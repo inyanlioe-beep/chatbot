@@ -6,6 +6,9 @@
     <meta name="theme-color" content="#f5f1e9" />
     <meta name="description" content="Chatbot personal yang terhubung secara aman ke AgentRouter." />
     <title>Ruang AI — AgentRouter Chat</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css" />
     <link rel="stylesheet" href="/styles.css" />
   </head>
@@ -52,12 +55,14 @@
               <span aria-hidden="true">⌄</span>
             </button>
           </div>
-          <button class="theme-toggle" id="themeToggle" type="button" aria-label="Ubah tema" title="Ubah tema">
-            <span class="theme-icon" aria-hidden="true">🌙</span>
-          </button>
-          <div class="status-pill" id="connectionStatus">
-            <span class="connection-dot" aria-hidden="true"></span>
-            <span id="connectionText">Memeriksa koneksi</span>
+          <div class="topbar-right">
+            <button class="theme-toggle" id="themeToggle" type="button" aria-label="Ubah tema" title="Ubah tema">
+              <span class="theme-icon" aria-hidden="true">🌙</span>
+            </button>
+            <div class="status-pill" id="connectionStatus">
+              <span class="connection-dot" aria-hidden="true"></span>
+              <span id="connectionText">Memeriksa koneksi</span>
+            </div>
           </div>
         </header>
 
