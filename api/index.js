@@ -48,7 +48,7 @@ function readConfig(env = process.env) {
 
 function resolveApiUrl(baseUrl, resource) {
   const trimmed = String(baseUrl || "").trim().replace(/\/+$/, "");
-  if (!trimmed) throw new Error("Base URL AgentRouter belum dikonfigurasi.");
+  if (!trimmed) throw new Error("Base URL AI Provider belum dikonfigurasi.");
 
   if (resource === "chat/completions" && /\/chat\/completions$/i.test(trimmed)) {
     return trimmed;
@@ -165,9 +165,9 @@ function validateMessages(messages) {
 function getUpstreamError(body, status) {
   try {
     const parsed = JSON.parse(body);
-    return parsed?.error?.message || parsed?.message || `AgentRouter merespons dengan status ${status}.`;
+    return parsed?.error?.message || parsed?.message || `AI Provider merespons dengan status ${status}.`;
   } catch {
-    return body.trim().slice(0, 500) || `AgentRouter merespons dengan status ${status}.`;
+    return body.trim().slice(0, 500) || `AI Provider merespons dengan status ${status}.`;
   }
 }
 
@@ -201,7 +201,7 @@ async function proxyModels(res, config) {
     return sendJson(res, 200, { models });
   } catch (error) {
     const message = error.name === "AbortError"
-      ? "Permintaan daftar model ke AgentRouter melewati batas waktu."
+      ? "Permintaan daftar model ke AI Provider melewati batas waktu."
       : `Tidak dapat mengambil daftar model: ${error.message}`;
     return sendJson(res, 502, { error: message });
   } finally {
@@ -212,7 +212,7 @@ async function proxyModels(res, config) {
 async function proxyChat(request, res, config) {
   if (!config.apiKey) {
     return sendJson(res, 503, {
-      error: "AGENTROUTER_API_KEY belum dikonfigurasi. Salin .env.example menjadi .env terlebih dahulu."
+      error: "API Provider key belum dikonfigurasi. Salin .env.example menjadi .env terlebih dahulu."
     });
   }
 

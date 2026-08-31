@@ -1,4 +1,4 @@
-# Ruang AI — AgentRouter Chat
+# Ruang AI — AI Provider Chat
 
 Aplikasi chatbot web ringan yang menggunakan API OpenAI-compatible atau endpoint Bluepack Messages. API key hanya dibaca oleh server Node dan tidak pernah dikirim ke browser.
 
@@ -12,7 +12,7 @@ Persyaratan: Node.js 18.17 atau lebih baru.
    Copy-Item .env.example .env
    ```
 
-2. Buka `.env`, kemudian isi konfigurasi AgentRouter Anda:
+2. Buka `.env`, kemudian isi konfigurasi AI Provider Anda:
 
    ```env
    AGENTROUTER_BASE_URL=https://agentrouter.org/v1
@@ -53,7 +53,7 @@ npm run dev
 - API key aman di backend proxy.
 - Riwayat percakapan tersimpan lokal di browser.
 - Pilihan model, system prompt, temperature, dan batas token.
-- Memuat daftar model dari endpoint `/models` AgentRouter.
+- Memuat daftar model dari endpoint `/models` AI Provider.
 - Stop generation, regenerate, copy pesan, pencarian, dan tampilan mobile.
 
 ## Catatan keamanan

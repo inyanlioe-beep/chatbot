@@ -62,7 +62,7 @@ function readConfig() {
 
 function resolveApiUrl(baseUrl, resource) {
   const trimmed = String(baseUrl || "").trim().replace(/\/+$/, "");
-  if (!trimmed) throw new Error("Base URL AgentRouter belum dikonfigurasi.");
+  if (!trimmed) throw new Error("Base URL AI Provider belum dikonfigurasi.");
 
   if (resource === "chat/completions" && /\/chat\/completions$/i.test(trimmed)) {
     return trimmed;
@@ -148,15 +148,15 @@ function validateMessages(messages) {
 function getUpstreamError(body, status) {
   try {
     const parsed = JSON.parse(body);
-    return parsed?.error?.message || parsed?.message || `AgentRouter merespons dengan status ${status}.`;
+    return parsed?.error?.message || parsed?.message || `AI Provider merespons dengan status ${status}.`;
   } catch {
-    return body.trim().slice(0, 500) || `AgentRouter merespons dengan status ${status}.`;
+    return body.trim().slice(0, 500) || `AI Provider merespons dengan status ${status}.`;
   }
 }
 
 async function proxyModels(response, config) {
   if (!config.apiKey) {
-    return sendJson(response, 503, { error: "AGENTROUTER_API_KEY belum dikonfigurasi." });
+    return sendJson(response, 503, { error: "API Provider key belum dikonfigurasi." });
   }
 
   if (isBluepackConfig(config)) {
@@ -184,7 +184,7 @@ async function proxyModels(response, config) {
     return sendJson(response, 200, { models });
   } catch (error) {
     const message = error.name === "AbortError"
-      ? "Permintaan daftar model ke AgentRouter melewati batas waktu."
+      ? "Permintaan daftar model ke AI Provider melewati batas waktu."
       : `Tidak dapat mengambil daftar model: ${error.message}`;
     return sendJson(response, 502, { error: message });
   } finally {
@@ -195,7 +195,7 @@ async function proxyModels(response, config) {
 async function proxyChat(request, response, config) {
   if (!config.apiKey) {
     return sendJson(response, 503, {
-      error: "AGENTROUTER_API_KEY belum dikonfigurasi. Salin .env.example menjadi .env terlebih dahulu."
+      error: "API Provider key belum dikonfigurasi. Salin .env.example menjadi .env terlebih dahulu."
     });
   }
 
@@ -285,7 +285,7 @@ async function proxyChat(request, response, config) {
     }
 
     if (!response.headersSent) {
-      sendJson(response, 502, { error: `Tidak dapat terhubung ke AgentRouter: ${error.message}` });
+      sendJson(response, 502, { error: `Tidak dapat terhubung ke AI Provider: ${error.message}` });
     } else {
       response.end();
     }
@@ -372,9 +372,9 @@ if (require.main === module) {
   const config = readConfig();
   const server = createAppServer(config);
   server.listen(config.port, () => {
-    console.log(`AgentRouter Chat siap di http://localhost:${config.port}`);
+    console.log(`AI Provider Chat siap di http://localhost:${config.port}`);
     if (!config.apiKey) {
-      console.warn("Peringatan: AGENTROUTER_API_KEY belum dikonfigurasi di file .env.");
+      console.warn("Peringatan: API Provider key belum dikonfigurasi di file .env.");
     }
   });
 }

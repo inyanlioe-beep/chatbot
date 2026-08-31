@@ -45,7 +45,7 @@ test("server menyajikan konfigurasi tanpa membocorkan API key", async () => {
   }
 });
 
-test("endpoint chat meneruskan payload dan stream AgentRouter", async () => {
+test("endpoint chat meneruskan payload dan stream AI Provider", async () => {
   let receivedAuthorization = "";
   let receivedBody = null;
   const upstream = http.createServer((request, response) => {

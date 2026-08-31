@@ -4,8 +4,8 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#f5f1e9" />
-    <meta name="description" content="Chatbot personal yang terhubung secara aman ke AgentRouter." />
-    <title>Ruang AI — AgentRouter Chat</title>
+    <meta name="description" content="Chatbot personal yang terhubung secara aman ke AI Provider." />
+    <title>Ruang AI — AI Provider Chat</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
@@ -69,7 +69,7 @@
         <section class="chat-scroll" id="chatScroll" aria-live="polite">
           <div class="welcome-view" id="welcomeView">
             <div class="welcome-mark" aria-hidden="true">R</div>
-            <p class="eyebrow">Terhubung lewat AgentRouter</p>
+            <p class="eyebrow">Terhubung lewat AI Provider</p>
             <h1>Apa yang ingin kamu selesaikan?</h1>
             <p class="welcome-copy">Mulai dari pertanyaan sederhana, merangkum ide, sampai membantu menulis dan membuat kode.</p>
             <div class="suggestion-grid" id="suggestionGrid">
@@ -96,7 +96,8 @@
 
         <footer class="composer-area">
           <form class="composer" id="chatForm">
-            <textarea id="messageInput" rows="1" placeholder="Ketik pesan untuk AgentRouter…" aria-label="Pesan"></textarea>
+            <div id="pastedImagePreview" class="pasted-image-preview"></div>
+            <textarea id="messageInput" rows="1" placeholder="Ketik pesan untuk AI Provider…" aria-label="Pesan"></textarea>
             <div class="composer-actions">
               <span class="composer-hint">Enter untuk kirim · Shift+Enter untuk baris baru</span>
               <button class="send-button" id="sendButton" type="submit">Kirim <span aria-hidden="true">↗</span></button>
@@ -132,7 +133,7 @@
           <span>Model</span>
           <input id="modelInput" name="model" list="modelList" autocomplete="off" placeholder="contoh: gpt-4o-mini" />
           <datalist id="modelList"></datalist>
-          <small>Isi dengan ID model yang tersedia di akun AgentRouter Anda.</small>
+          <small>Isi dengan ID model yang tersedia di akun AI Provider Anda.</small>
         </label>
 
         <label class="field">
@@ -156,7 +157,7 @@
         <label class="field">
           <span>Base URL server</span>
           <input id="baseUrlInput" type="text" readonly />
-          <small>Ubah nilai ini melalui <code>AGENTROUTER_BASE_URL</code> di file <code>.env</code>.</small>
+          <small>Ubah nilai ini melalui environment variables di file <code>.env</code>.</small>
         </label>
 
         <div class="settings-actions">

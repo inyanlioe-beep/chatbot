@@ -16,7 +16,8 @@ const state = {
   controller: null,
   streaming: false,
   toastTimer: null,
-  theme: "light"
+  theme: "light",
+  pastedImages: []
 };
 
 const elements = {
@@ -40,6 +41,7 @@ const elements = {
   modelInput: document.querySelector("#modelInput"),
   modelList: document.querySelector("#modelList"),
   newChatButton: document.querySelector("#newChatButton"),
+  pastedImagePreview: document.querySelector("#pastedImagePreview"),
   refreshModelsButton: document.querySelector("#refreshModelsButton"),
   searchInput: document.querySelector("#searchInput"),
   sendButton: document.querySelector("#sendButton"),
@@ -489,6 +491,38 @@ function createMessageElement(message, index, isLast) {
     appendTextBlocks(content, message.content);
   }
 
+  // Display pasted images if any
+  if (message.images && message.images.length > 0) {
+    const imageContainer = document.createElement("div");
+    imageContainer.className = "message-images";
+    imageContainer.style.display = "flex";
+    imageContainer.style.flexWrap = "wrap";
+    imageContainer.style.gap = "8px";
+    imageContainer.style.marginTop = "12px";
+    
+    message.images.forEach((imgData) => {
+      const imgWrapper = document.createElement("div");
+      imgWrapper.style.borderRadius = "8px";
+      imgWrapper.style.overflow = "hidden";
+      imgWrapper.style.border = "1px solid var(--line)";
+      imgWrapper.style.maxWidth = "240px";
+      imgWrapper.style.maxHeight = "240px";
+      
+      const img = document.createElement("img");
+      img.src = imgData.dataUrl;
+      img.alt = imgData.fileName;
+      img.style.maxWidth = "100%";
+      img.style.maxHeight = "100%";
+      img.style.objectFit = "contain";
+      img.style.display = "block";
+      
+      imgWrapper.appendChild(img);
+      imageContainer.appendChild(imgWrapper);
+    });
+    
+    body.appendChild(imageContainer);
+  }
+
   body.append(meta, content);
 
   if (!message.pending) {
@@ -691,7 +725,7 @@ async function requestCompletion(conversation) {
 
     assistantMessage.pending = false;
     if (!assistantMessage.content.trim()) {
-      throw new Error("AgentRouter tidak mengembalikan isi jawaban.");
+      throw new Error("AI Provider tidak mengembalikan isi jawaban.");
     }
   } catch (error) {
     assistantMessage.pending = false;
@@ -719,7 +753,16 @@ async function sendMessage(text) {
 
   const conversation = getActiveConversation();
   const now = new Date().toISOString();
-  conversation.messages.push({ role: "user", content: trimmed, createdAt: now });
+  
+  // Create user message with attached images
+  const userMessage = { 
+    role: "user", 
+    content: trimmed, 
+    createdAt: now,
+    images: state.pastedImages && state.pastedImages.length > 0 ? [...state.pastedImages] : []
+  };
+  
+  conversation.messages.push(userMessage);
   conversation.updatedAt = now;
 
   if (conversation.title === "Percakapan baru") {
@@ -728,6 +771,12 @@ async function sendMessage(text) {
 
   elements.messageInput.value = "";
   autoResizeInput();
+  
+  // Clear pasted images
+  state.pastedImages = [];
+  elements.pastedImagePreview.replaceChildren();
+  elements.pastedImagePreview.classList.remove("active");
+  
   saveConversations();
   renderAll();
   await requestCompletion(conversation);
@@ -807,7 +856,7 @@ async function loadServerConfig() {
       elements.configBanner.classList.add("disconnected");
       elements.configBanner.classList.remove("connected");
       elements.configBannerTitle.textContent = "API key belum dikonfigurasi";
-      elements.configBannerText.textContent = "Salin .env.example menjadi .env, lalu isi AGENTROUTER_API_KEY.";
+      elements.configBannerText.textContent = "Salin .env.example menjadi .env, lalu isi API Provider key."
     }
     populateSettings();
     updateModelLabel();
@@ -830,6 +879,109 @@ elements.messageInput.addEventListener("keydown", (event) => {
     elements.chatForm.requestSubmit();
   }
 });
+
+elements.messageInput.addEventListener("paste", async (event) => {
+  const clipboardData = event.clipboardData || window.clipboardData;
+  if (!clipboardData) return;
+
+  const items = clipboardData.items || [];
+  let foundImage = false;
+
+  // Check for images in clipboard
+  for (const item of items) {
+    if (item.kind === "file" && item.type.startsWith("image/")) {
+      foundImage = true;
+      event.preventDefault();
+      
+      const file = item.getAsFile();
+      if (!file) continue;
+
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const dataUrl = e.target.result;
+        addPastedImage(dataUrl, file.name);
+      };
+      reader.readAsDataURL(file);
+    }
+  }
+
+  // If no image, handle formatted text from Word
+  if (!foundImage && clipboardData.types.includes("text/html")) {
+    event.preventDefault();
+    const html = clipboardData.getData("text/html");
+    const text = clipboardData.getData("text/plain");
+    
+    // Extract text from HTML and preserve basic formatting
+    const textarea = document.createElement("textarea");
+    textarea.innerHTML = html;
+    let extractedText = textarea.value;
+    
+    // Use plain text if extracted text is empty
+    if (!extractedText.trim()) {
+      extractedText = text;
+    }
+    
+    // Preserve line breaks and clean up excess whitespace
+    extractedText = extractedText
+      .split(/\n+/)
+      .map(line => line.trim())
+      .filter(line => line)
+      .join("\n");
+    
+    // Insert the formatted text into the input
+    if (extractedText) {
+      const currentText = elements.messageInput.value;
+      const selectionStart = elements.messageInput.selectionStart;
+      const selectionEnd = elements.messageInput.selectionEnd;
+      
+      const beforeText = currentText.slice(0, selectionStart);
+      const afterText = currentText.slice(selectionEnd);
+      
+      elements.messageInput.value = beforeText + extractedText + afterText;
+      elements.messageInput.selectionStart = selectionStart + extractedText.length;
+      elements.messageInput.selectionEnd = selectionStart + extractedText.length;
+      
+      autoResizeInput();
+    }
+  }
+});
+
+function addPastedImage(dataUrl, fileName) {
+  if (!state.pastedImages) {
+    state.pastedImages = [];
+  }
+  
+  const id = `img-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  state.pastedImages.push({ id, dataUrl, fileName });
+  
+  const preview = document.createElement("div");
+  preview.className = "pasted-image-item";
+  preview.dataset.imageId = id;
+  
+  const img = document.createElement("img");
+  img.src = dataUrl;
+  img.alt = fileName;
+  
+  const removeBtn = document.createElement("button");
+  removeBtn.type = "button";
+  removeBtn.className = "pasted-image-remove";
+  removeBtn.innerHTML = "×";
+  removeBtn.addEventListener("click", (e) => {
+    e.preventDefault();
+    state.pastedImages = state.pastedImages.filter(img => img.id !== id);
+    preview.remove();
+    if (elements.pastedImagePreview.children.length === 0) {
+      elements.pastedImagePreview.classList.remove("active");
+    }
+  });
+  
+  preview.appendChild(img);
+  preview.appendChild(removeBtn);
+  elements.pastedImagePreview.appendChild(preview);
+  elements.pastedImagePreview.classList.add("active");
+  
+  showToast(`Gambar ditambahkan: ${fileName}`);
+}
 
 elements.stopButton.addEventListener("click", () => state.controller?.abort());
 elements.newChatButton.addEventListener("click", newConversation);
