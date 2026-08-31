@@ -86,6 +86,57 @@ test("endpoint chat meneruskan payload dan stream AgentRouter", async () => {
   }
 });
 
+test("endpoint chat mendukung format Bluepack /messages", async () => {
+  let receivedPath = "";
+  let receivedAuthorization = "";
+  let receivedBody = null;
+  const upstream = http.createServer((request, response) => {
+    receivedPath = request.url;
+    receivedAuthorization = request.headers.authorization;
+    let body = "";
+    request.on("data", (chunk) => { body += chunk; });
+    request.on("end", () => {
+      receivedBody = JSON.parse(body);
+      response.writeHead(200, { "Content-Type": "application/json" });
+      response.end(JSON.stringify({ content: [{ type: "thinking", thinking: "internal" }, { type: "text", text: "Halo dari Bluepack" }] }));
+    });
+  });
+  const upstreamPort = await listen(upstream);
+  const app = createAppServer({
+    apiKey: "bluepack-key",
+    baseUrl: `http://127.0.0.1:${upstreamPort}/messages`,
+    model: "claude-opus-5",
+    provider: "bluepack"
+  });
+  const appPort = await listen(app);
+
+  try {
+    const response = await fetch(`http://127.0.0.1:${appPort}/api/chat`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        messages: [
+          { role: "system", content: "Jawab singkat" },
+          { role: "user", content: "Halo" }
+        ]
+      })
+    });
+    const payload = await response.json();
+
+    assert.equal(response.status, 200);
+    assert.equal(receivedPath, "/messages");
+    assert.equal(receivedAuthorization, "Bearer bluepack-key");
+    assert.equal(receivedBody.model, "claude-opus-5");
+    assert.equal(receivedBody.system, "Jawab singkat");
+    assert.deepEqual(receivedBody.messages, [{ role: "user", content: "Halo" }]);
+    assert.equal(receivedBody.stream, undefined);
+    assert.deepEqual(payload.content[1], { type: "text", text: "Halo dari Bluepack" });
+  } finally {
+    await close(app);
+    await close(upstream);
+  }
+});
+
 test("handler Vercel menanggapi /api/config dan /api/models dengan payload yang aman", async () => {
   const { handler } = require("../api/index");
   const previous = {

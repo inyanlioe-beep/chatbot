@@ -35,10 +35,14 @@ function loadEnvFile(filePath = path.join(ROOT_DIR, ".env")) {
 }
 
 function readConfig(env = process.env) {
+  const baseUrl = env.BLUEPACK_BASE_URL || env.AGENTROUTER_BASE_URL || DEFAULT_BASE_URL;
   return {
-    apiKey: env.AGENTROUTER_API_KEY || "",
-    baseUrl: env.AGENTROUTER_BASE_URL || DEFAULT_BASE_URL,
-    model: env.AGENTROUTER_MODEL || "gpt-4o-mini"
+    apiKey: env.BLUEPACK_API_KEY || env.AGENTROUTER_API_KEY || "",
+    baseUrl,
+    model: env.BLUEPACK_MODEL || env.AGENTROUTER_MODEL || "gpt-4o-mini",
+    provider: env.BLUEPACK_BASE_URL || env.BLUEPACK_API_KEY
+      ? "bluepack"
+      : (env.AGENTROUTER_PROVIDER || "openai-compatible")
   };
 }
 
@@ -54,7 +58,15 @@ function resolveApiUrl(baseUrl, resource) {
     return trimmed.replace(/\/chat\/completions$/i, "/models");
   }
 
+  if (resource === "messages" && /\/messages$/i.test(trimmed)) {
+    return trimmed;
+  }
+
   return `${trimmed}/${resource}`;
+}
+
+function isBluepackConfig(config) {
+  return config.provider === "bluepack" || /\/messages$/i.test(String(config.baseUrl || "").trim());
 }
 
 function sendJson(res, statusCode, payload) {
@@ -164,6 +176,10 @@ async function proxyModels(res, config) {
     return sendJson(res, 200, { models: [] });
   }
 
+  if (isBluepackConfig(config)) {
+    return sendJson(res, 200, { models: config.model ? [config.model] : [] });
+  }
+
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 15000);
 
@@ -216,24 +232,35 @@ async function proxyChat(request, res, config) {
 
   const temperature = Number(body.temperature);
   const maxTokens = Number(body.maxTokens);
-  const upstreamBody = {
-    model: typeof body.model === "string" && body.model.trim() ? body.model.trim() : config.model,
-    messages,
-    stream: true,
-    temperature: Number.isFinite(temperature) ? Math.min(2, Math.max(0, temperature)) : 0.7,
-    max_tokens: Number.isFinite(maxTokens) ? Math.min(65536, Math.max(1, Math.round(maxTokens))) : 2048
-  };
+  const model = typeof body.model === "string" && body.model.trim() ? body.model.trim() : config.model;
+  const boundedMaxTokens = Number.isFinite(maxTokens) ? Math.min(65536, Math.max(1, Math.round(maxTokens))) : 2048;
+  const bluepack = isBluepackConfig(config);
+  const systemMessages = messages.filter((message) => message.role === "system");
+  const upstreamBody = bluepack
+    ? {
+        model,
+        max_tokens: boundedMaxTokens,
+        messages: messages.filter((message) => message.role !== "system"),
+        ...(systemMessages.length ? { system: systemMessages.map((message) => message.content).join("\n\n") } : {})
+      }
+    : {
+        model,
+        messages,
+        stream: true,
+        temperature: Number.isFinite(temperature) ? Math.min(2, Math.max(0, temperature)) : 0.7,
+        max_tokens: boundedMaxTokens
+      };
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 5 * 60 * 1000);
 
   try {
-    const upstream = await fetch(resolveApiUrl(config.baseUrl, "chat/completions"), {
+    const upstream = await fetch(resolveApiUrl(config.baseUrl, bluepack ? "messages" : "chat/completions"), {
       method: "POST",
       headers: {
         Authorization: `Bearer ${config.apiKey}`,
         "Content-Type": "application/json",
-        Accept: "text/event-stream, application/json"
+        Accept: bluepack ? "application/json" : "text/event-stream, application/json"
       },
       body: JSON.stringify(upstreamBody),
       signal: controller.signal
@@ -301,7 +328,8 @@ async function handler(request, response) {
     return sendJson(response, 200, {
       apiKeyConfigured: Boolean(config.apiKey),
       baseUrl: config.baseUrl,
-      model: config.model
+      model: config.model,
+      provider: config.provider
     });
   }
 

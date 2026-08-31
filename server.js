@@ -48,10 +48,14 @@ function loadEnvFile(filePath = path.join(ROOT_DIR, ".env")) {
 }
 
 function readConfig() {
+  const baseUrl = process.env.BLUEPACK_BASE_URL || process.env.AGENTROUTER_BASE_URL || "https://agentrouter.org/v1";
   return {
-    apiKey: process.env.AGENTROUTER_API_KEY || "",
-    baseUrl: process.env.AGENTROUTER_BASE_URL || "https://agentrouter.org/v1",
-    model: process.env.AGENTROUTER_MODEL || "gpt-4o-mini",
+    apiKey: process.env.BLUEPACK_API_KEY || process.env.AGENTROUTER_API_KEY || "",
+    baseUrl,
+    model: process.env.BLUEPACK_MODEL || process.env.AGENTROUTER_MODEL || "gpt-4o-mini",
+    provider: process.env.BLUEPACK_BASE_URL || process.env.BLUEPACK_API_KEY
+      ? "bluepack"
+      : (process.env.AGENTROUTER_PROVIDER || "openai-compatible"),
     port: Number(process.env.PORT) || 3000
   };
 }
@@ -68,7 +72,15 @@ function resolveApiUrl(baseUrl, resource) {
     return trimmed.replace(/\/chat\/completions$/i, "/models");
   }
 
+  if (resource === "messages" && /\/messages$/i.test(trimmed)) {
+    return trimmed;
+  }
+
   return `${trimmed}/${resource}`;
+}
+
+function isBluepackConfig(config) {
+  return config.provider === "bluepack" || /\/messages$/i.test(String(config.baseUrl || "").trim());
 }
 
 function sendJson(response, statusCode, payload) {
@@ -147,6 +159,10 @@ async function proxyModels(response, config) {
     return sendJson(response, 503, { error: "AGENTROUTER_API_KEY belum dikonfigurasi." });
   }
 
+  if (isBluepackConfig(config)) {
+    return sendJson(response, 200, { models: config.model ? [config.model] : [] });
+  }
+
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 15000);
 
@@ -200,25 +216,37 @@ async function proxyChat(request, response, config) {
 
   const temperature = Number(body.temperature);
   const maxTokens = Number(body.maxTokens);
-  const upstreamBody = {
-    model: typeof body.model === "string" && body.model.trim() ? body.model.trim() : config.model,
-    messages,
-    stream: true,
-    temperature: Number.isFinite(temperature) ? Math.min(2, Math.max(0, temperature)) : 0.7,
-    max_tokens: Number.isFinite(maxTokens) ? Math.min(65536, Math.max(1, Math.round(maxTokens))) : 2048
-  };
+  const model = typeof body.model === "string" && body.model.trim() ? body.model.trim() : config.model;
+  const boundedTemperature = Number.isFinite(temperature) ? Math.min(2, Math.max(0, temperature)) : 0.7;
+  const boundedMaxTokens = Number.isFinite(maxTokens) ? Math.min(65536, Math.max(1, Math.round(maxTokens))) : 2048;
+  const bluepack = isBluepackConfig(config);
+  const systemMessages = messages.filter((message) => message.role === "system");
+  const upstreamBody = bluepack
+    ? {
+        model,
+        max_tokens: boundedMaxTokens,
+        messages: messages.filter((message) => message.role !== "system"),
+        ...(systemMessages.length ? { system: systemMessages.map((message) => message.content).join("\n\n") } : {})
+      }
+    : {
+        model,
+        messages,
+        stream: true,
+        temperature: boundedTemperature,
+        max_tokens: boundedMaxTokens
+      };
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 5 * 60 * 1000);
   response.on("close", () => controller.abort());
 
   try {
-    const upstream = await fetch(resolveApiUrl(config.baseUrl, "chat/completions"), {
+    const upstream = await fetch(resolveApiUrl(config.baseUrl, bluepack ? "messages" : "chat/completions"), {
       method: "POST",
       headers: {
         Authorization: `Bearer ${config.apiKey}`,
         "Content-Type": "application/json",
-        Accept: "text/event-stream, application/json"
+        Accept: bluepack ? "application/json" : "text/event-stream, application/json"
       },
       body: JSON.stringify(upstreamBody),
       signal: controller.signal
@@ -314,7 +342,8 @@ function createAppServer(config = readConfig()) {
       return sendJson(response, 200, {
         apiKeyConfigured: Boolean(config.apiKey),
         baseUrl: config.baseUrl,
-        model: config.model
+        model: config.model,
+        provider: config.provider
       });
     }
 

@@ -580,6 +580,12 @@ function setStreaming(streaming) {
 }
 
 function extractDelta(payload) {
+  const bluepackText = payload?.content
+    ?.filter((part) => part?.type === "text")
+    .map((part) => part.text || "")
+    .join("");
+  if (bluepackText) return bluepackText;
+
   const choice = payload?.choices?.[0];
   const delta = choice?.delta?.content ?? choice?.delta?.reasoning_content;
   if (typeof delta === "string") return delta;

@@ -1,6 +1,6 @@
 # Ruang AI — AgentRouter Chat
 
-Aplikasi chatbot web ringan yang menggunakan API OpenAI-compatible dari AgentRouter. API key hanya dibaca oleh server Node dan tidak pernah dikirim ke browser.
+Aplikasi chatbot web ringan yang menggunakan API OpenAI-compatible atau endpoint Bluepack Messages. API key hanya dibaca oleh server Node dan tidak pernah dikirim ke browser.
 
 ## Menjalankan aplikasi
 
@@ -20,7 +20,17 @@ Persyaratan: Node.js 18.17 atau lebih baru.
    AGENTROUTER_MODEL=gpt-4o-mini
    ```
 
-   Jika dashboard AgentRouter memberikan base URL yang berbeda, gunakan nilai persis dari dashboard. Server otomatis menambahkan `/chat/completions` ke base URL tersebut.
+   Untuk Bluepack, isi konfigurasi alternatif berikut:
+
+   ```env
+   BLUEPACK_BASE_URL=https://ai.bluepack.my.id/messages
+   BLUEPACK_API_KEY=api_key_bluepack_anda
+   BLUEPACK_MODEL=claude-opus-5
+   ```
+
+   Jika `BLUEPACK_*` diisi, server mengirim format Anthropic Messages ke endpoint tersebut, termasuk header `Authorization: Bearer ...`. Respons JSON Bluepack akan ditampilkan tanpa blok `thinking` internal.
+
+   Jika dashboard provider memberikan base URL yang berbeda, gunakan nilai persis dari dashboard. Untuk konfigurasi `AGENTROUTER_*`, server menambahkan `/chat/completions`; konfigurasi `BLUEPACK_*` menggunakan endpoint `/messages` secara langsung.
 
 3. Jalankan aplikasi:
 
@@ -39,6 +49,7 @@ npm run dev
 ## Fitur
 
 - Streaming jawaban dari endpoint `/chat/completions`.
+- Dukungan endpoint Bluepack `/messages` dengan format respons Anthropic.
 - API key aman di backend proxy.
 - Riwayat percakapan tersimpan lokal di browser.
 - Pilihan model, system prompt, temperature, dan batas token.
