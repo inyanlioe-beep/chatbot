@@ -17,7 +17,8 @@ const state = {
   streaming: false,
   toastTimer: null,
   theme: "light",
-  pastedImages: []
+  pastedImages: [],
+  attachments: []
 };
 
 const elements = {
@@ -59,7 +60,10 @@ const elements = {
   welcomeView: document.querySelector("#welcomeView"),
   lightbox: document.querySelector("#lightbox"),
   lightboxImage: document.querySelector("#lightboxImage"),
-  lightboxClose: document.querySelector("#lightboxClose")
+  lightboxClose: document.querySelector("#lightboxClose"),
+  attachmentButton: document.querySelector("#attachmentButton"),
+  attachmentPreview: document.querySelector("#attachmentPreview"),
+  fileInput: document.querySelector("#fileInput")
 };
 
 function makeId() {
@@ -816,15 +820,23 @@ async function requestCompletion(conversation) {
 async function sendMessage(text) {
   const trimmed = text.trim();
   const hasImages = state.pastedImages.length > 0;
-  if ((!trimmed && !hasImages) || state.streaming) return;
+  const hasAttachments = state.attachments && state.attachments.length > 0;
+  if ((!trimmed && !hasImages && !hasAttachments) || state.streaming) return;
 
   const conversation = getActiveConversation();
   const now = new Date().toISOString();
   
+  // Build content with attachments
+  let content = trimmed;
+  if (hasAttachments) {
+    const attachmentTexts = state.attachments.map(a => `[File: ${a.fileName}]\n${a.content}`).join("\n\n");
+    content = content ? `${content}\n\n${attachmentTexts}` : attachmentTexts;
+  }
+  
   // Create user message with attached images
   const userMessage = { 
     role: "user", 
-    content: trimmed, 
+    content: content, 
     createdAt: now,
     images: state.pastedImages && state.pastedImages.length > 0 ? [...state.pastedImages] : []
   };
@@ -835,16 +847,17 @@ async function sendMessage(text) {
   if (conversation.title === "Percakapan baru") {
     conversation.title = trimmed
       ? (trimmed.length > 42 ? `${trimmed.slice(0, 42).trim()}…` : trimmed)
-      : "Gambar";
+      : hasImages ? "Gambar" : "Dokumen";
   }
 
   elements.messageInput.value = "";
   autoResizeInput();
   
-  // Clear pasted images
+  // Clear pasted images and attachments
   state.pastedImages = [];
   elements.pastedImagePreview.replaceChildren();
   elements.pastedImagePreview.classList.remove("active");
+  clearAttachments();
   
   saveConversations();
   renderAll();
@@ -1051,6 +1064,81 @@ function addPastedImage(dataUrl, fileName) {
   
   showToast(`Gambar ditambahkan: ${fileName}`);
 }
+
+function addAttachment(file) {
+  if (!state.attachments) {
+    state.attachments = [];
+  }
+  
+  const id = `att-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  const isImage = file.type.startsWith("image/");
+  
+  if (isImage) {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      addPastedImage(e.target.result, file.name);
+    };
+    reader.readAsDataURL(file);
+    return;
+  }
+  
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    const content = e.target.result;
+    state.attachments.push({ id, fileName: file.name, content, type: file.type });
+    
+    const item = document.createElement("div");
+    item.className = "attachment-item";
+    item.dataset.attachmentId = id;
+    
+    const icon = document.createElement("span");
+    icon.className = "attachment-item-icon";
+    icon.textContent = "📄";
+    
+    const name = document.createElement("span");
+    name.className = "attachment-item-name";
+    name.textContent = file.name;
+    name.title = file.name;
+    
+    const removeBtn = document.createElement("button");
+    removeBtn.type = "button";
+    removeBtn.className = "attachment-item-remove";
+    removeBtn.innerHTML = "×";
+    removeBtn.addEventListener("click", (e) => {
+      e.preventDefault();
+      state.attachments = state.attachments.filter(a => a.id !== id);
+      item.remove();
+      if (elements.attachmentPreview.children.length === 0) {
+        elements.attachmentPreview.classList.remove("active");
+      }
+    });
+    
+    item.appendChild(icon);
+    item.appendChild(name);
+    item.appendChild(removeBtn);
+    elements.attachmentPreview.appendChild(item);
+    elements.attachmentPreview.classList.add("active");
+    
+    showToast(`Dokumen ditambahkan: ${file.name}`);
+  };
+  reader.readAsText(file);
+}
+
+function clearAttachments() {
+  state.attachments = [];
+  elements.attachmentPreview.innerHTML = "";
+  elements.attachmentPreview.classList.remove("active");
+}
+
+elements.attachmentButton.addEventListener("click", () => {
+  elements.fileInput.click();
+});
+
+elements.fileInput.addEventListener("change", (e) => {
+  const files = Array.from(e.target.files || []);
+  files.forEach(file => addAttachment(file));
+  e.target.value = "";
+});
 
 elements.stopButton.addEventListener("click", () => state.controller?.abort());
 elements.newChatButton.addEventListener("click", newConversation);

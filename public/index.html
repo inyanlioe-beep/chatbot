@@ -97,7 +97,14 @@
         <footer class="composer-area">
           <form class="composer" id="chatForm">
             <div id="pastedImagePreview" class="pasted-image-preview"></div>
-            <textarea id="messageInput" rows="1" placeholder="Ketik pesan untuk AI Provider…" aria-label="Pesan"></textarea>
+            <div id="attachmentPreview" class="attachment-preview"></div>
+            <div class="composer-input-row">
+              <button class="attachment-button" id="attachmentButton" type="button" title="Lampirkan file" aria-label="Lampirkan file">
+                <span aria-hidden="true">📎</span>
+              </button>
+              <textarea id="messageInput" rows="1" placeholder="Ketik pesan untuk AI Provider…" aria-label="Pesan"></textarea>
+            </div>
+            <input type="file" id="fileInput" hidden accept="image/*,.pdf,.doc,.docx,.txt,.md,.csv,.xlsx,.pptx" />
             <div class="composer-actions">
               <span class="composer-hint">Enter untuk kirim · Shift+Enter untuk baris baru</span>
               <button class="send-button" id="sendButton" type="submit">Kirim <span aria-hidden="true">↗</span></button>
