@@ -63,15 +63,7 @@ const elements = {
   lightboxClose: document.querySelector("#lightboxClose"),
   attachmentButton: document.querySelector("#attachmentButton"),
   attachmentPreview: document.querySelector("#attachmentPreview"),
-  fileInput: document.querySelector("#fileInput"),
-  htmlPasteButton: document.querySelector("#htmlPasteButton"),
-  htmlPasteDialog: document.querySelector("#htmlPasteDialog"),
-  htmlPasteInput: document.querySelector("#htmlPasteInput"),
-  htmlPreviewButton: document.querySelector("#htmlPreviewButton"),
-  htmlRenderButton: document.querySelector("#htmlRenderButton"),
-  htmlPreviewContainer: document.querySelector("#htmlPreviewContainer"),
-  htmlPreviewBox: document.querySelector("#htmlPreviewBox"),
-  closeHtmlPasteButton: document.querySelector("#closeHtmlPasteButton")
+  fileInput: document.querySelector("#fileInput")
 };
 
 function makeId() {
@@ -536,24 +528,6 @@ function createMessageElement(message, index, isLast) {
     appendTextBlocks(content, message.content);
   }
 
-  // Display HTML content if present
-  if (message.htmlContent && message.htmlContent.trim()) {
-    try {
-      const htmlContainer = document.createElement("div");
-      htmlContainer.className = "html-rendered-content";
-      htmlContainer.innerHTML = message.htmlContent;
-      content.append(htmlContainer);
-    } catch (error) {
-      console.error("Error rendering HTML content:", error);
-      // Fallback: show as text if rendering fails
-      const fallback = document.createElement("pre");
-      fallback.style.overflow = "auto";
-      fallback.style.fontSize = "12px";
-      fallback.textContent = message.htmlContent;
-      content.append(fallback);
-    }
-  }
-
   // Display pasted images if any
   let imageContainer = null;
   if (message.images && message.images.length > 0) {
@@ -986,88 +960,7 @@ elements.messageInput.addEventListener("keydown", (event) => {
     event.preventDefault();
     elements.chatForm.requestSubmit();
   }
-  
-  // Handle Ctrl+V or Cmd+V paste for better detection
-  if ((event.ctrlKey || event.metaKey) && event.key === "v") {
-    // Small delay to allow paste to complete
-    setTimeout(() => {
-      const pastedText = elements.messageInput.value.trim();
-      if (pastedText && isHtmlContent(pastedText)) {
-        // Check if we should auto-render this HTML
-        elements.messageInput.value = ""; // Clear input
-        autoResizeInput();
-        
-        try {
-          // Ensure conversation exists
-          let activeConversation = getActiveConversation();
-          if (!activeConversation) {
-            newConversation();
-            activeConversation = getActiveConversation();
-          }
-          
-          if (!activeConversation) {
-            throw new Error("Gagal membuat percakapan baru");
-          }
-          
-          const sanitized = sanitizeHtml(pastedText);
-          
-          if (!sanitized || sanitized.trim().length === 0) {
-            showToast("⚠️ HTML kosong atau tidak valid");
-            elements.messageInput.value = pastedText;
-            return;
-          }
-          
-          const message = {
-            id: makeId(),
-            role: "user",
-            content: "🔗 **HTML Content**\n\n```html\n" + pastedText + "\n```",
-            htmlContent: sanitized,
-            createdAt: new Date().toISOString(),
-            pending: false
-          };
-          
-          activeConversation.messages.push(message);
-          saveConversations();
-          renderAll();
-          
-          showToast("✅ HTML berhasil di-paste dan di-render!");
-          elements.messageInput.focus();
-        } catch (error) {
-          console.error("Error rendering HTML from Ctrl+V:", error);
-          showToast("❌ Error: " + (error.message || "Gagal merender HTML"));
-          elements.messageInput.value = pastedText; // Restore text if failed
-        }
-      }
-    }, 10);
-  }
 });
-
-// Function to detect if text is HTML
-function isHtmlContent(text) {
-  if (!text || typeof text !== 'string') return false;
-  
-  const trimmed = text.trim();
-  
-  // Check for common HTML patterns
-  const htmlPatterns = [
-    /<html/i,                  // Full HTML document
-    /<head/i,                  // HTML head tag
-    /<body/i,                  // HTML body tag
-    /<div/i,                   // Common container
-    /<p>/i,                    // Paragraph
-    /<h[1-6]/i,                // Headings
-    /<table/i,                 // Table
-    /<ul|<ol/i,                // Lists
-    /<img/i,                   // Images
-    /<br/i,                    // Line breaks
-    /<span/i,                  // Span
-    /<a\s+href/i,              // Links
-    /<!DOCTYPE/i,              // DOCTYPE declaration
-    /<!--/,                    // HTML comments
-  ];
-  
-  return htmlPatterns.some(pattern => pattern.test(trimmed));
-}
 
 elements.messageInput.addEventListener("paste", async (event) => {
   const clipboardData = event.clipboardData || window.clipboardData;
@@ -1094,90 +987,31 @@ elements.messageInput.addEventListener("paste", async (event) => {
     }
   }
 
-  if (foundImage) return; // Exit if image was processed
-
-  // Try to get HTML content first (from web pages, rich text editors)
-  let htmlContent = clipboardData.types.includes("text/html") ? clipboardData.getData("text/html") : null;
-  let plainText = clipboardData.types.includes("text/plain") ? clipboardData.getData("text/plain") : null;
-
-  // Detect if it's HTML
-  const isHtml = isHtmlContent(htmlContent) || isHtmlContent(plainText);
-  
-  if (isHtml && (htmlContent || plainText)) {
+  // If no image, handle formatted text from Word
+  if (!foundImage && clipboardData.types.includes("text/html")) {
     event.preventDefault();
+    const html = clipboardData.getData("text/html");
+    const text = clipboardData.getData("text/plain");
     
-    // Use HTML if available, otherwise use plain text
-    const contentToRender = htmlContent || plainText;
+    // Extract text from HTML and preserve basic formatting
+    const textarea = document.createElement("textarea");
+    textarea.innerHTML = html;
+    let extractedText = textarea.value;
     
-    try {
-      // Ensure conversation exists
-      let activeConversation = getActiveConversation();
-      if (!activeConversation) {
-        newConversation();
-        activeConversation = getActiveConversation();
-      }
-      
-      if (!activeConversation) {
-        throw new Error("Gagal membuat percakapan baru");
-      }
-      
-      // Sanitize HTML
-      const sanitized = sanitizeHtml(contentToRender);
-      
-      if (!sanitized || sanitized.trim().length === 0) {
-        showToast("⚠️ HTML kosong atau tidak valid setelah sanitasi");
-        return;
-      }
-      
-      const message = {
-        id: makeId(),
-        role: "user",
-        content: "🔗 **HTML Content**\n\n```html\n" + contentToRender + "\n```",
-        htmlContent: sanitized,
-        createdAt: new Date().toISOString(),
-        pending: false
-      };
-      
-      activeConversation.messages.push(message);
-      saveConversations();
-      renderAll();
-      
-      showToast("✅ HTML berhasil di-paste dan di-render!");
-      
-      // Clear input
-      elements.messageInput.value = "";
-      autoResizeInput();
-      elements.messageInput.focus();
-    } catch (error) {
-      console.error("Error rendering HTML:", error);
-      showToast("❌ Error: " + (error.message || "Gagal merender HTML"));
+    // Use plain text if extracted text is empty
+    if (!extractedText.trim()) {
+      extractedText = text;
     }
     
-    return;
-  }
-
-  // If not HTML, handle as formatted text (from Word docs, etc)
-  if (htmlContent || plainText) {
-    event.preventDefault();
+    // Preserve line breaks and clean up excess whitespace
+    extractedText = extractedText
+      .split(/\n+/)
+      .map(line => line.trim())
+      .filter(line => line)
+      .join("\n");
     
-    // Extract text from HTML if available
-    let extractedText = plainText;
-    
-    if (htmlContent && !plainText) {
-      const textarea = document.createElement("textarea");
-      textarea.innerHTML = htmlContent;
-      extractedText = textarea.value;
-    }
-    
-    if (extractedText && extractedText.trim()) {
-      // Preserve line breaks and clean up excess whitespace
-      extractedText = extractedText
-        .split(/\n+/)
-        .map(line => line.trim())
-        .filter(line => line)
-        .join("\n");
-      
-      // Insert the text into the input
+    // Insert the formatted text into the input
+    if (extractedText) {
       const currentText = elements.messageInput.value;
       const selectionStart = elements.messageInput.selectionStart;
       const selectionEnd = elements.messageInput.selectionEnd;
@@ -1351,130 +1185,6 @@ elements.suggestionGrid.addEventListener("click", (event) => {
   elements.messageInput.value = button.dataset.prompt;
   autoResizeInput();
   elements.messageInput.focus();
-});
-
-// HTML Paste functionality
-function sanitizeHtml(html) {
-  try {
-    if (!html || typeof html !== 'string') {
-      return '';
-    }
-    
-    const parser = new DOMParser();
-    const doc = parser.parseFromString(html, 'text/html');
-    
-    // Check for parsing errors
-    if (doc.body.textContent === '' && html.trim() !== '') {
-      // If parsing failed and original had content, return escaped HTML
-      const div = document.createElement('div');
-      div.textContent = html;
-      return div.innerHTML;
-    }
-    
-    // Remove potentially dangerous elements
-    const dangerousElements = doc.querySelectorAll('script, style, iframe, object, embed, link, meta, form, input, button[type="submit"], button[type="reset"]');
-    dangerousElements.forEach(el => el.remove());
-    
-    // Remove event attributes
-    const allElements = doc.querySelectorAll('*');
-    allElements.forEach(el => {
-      Array.from(el.attributes).forEach(attr => {
-        // Remove event handlers
-        if (attr.name.startsWith('on')) {
-          el.removeAttribute(attr.name);
-        }
-        // Remove javascript: protocol
-        if (attr.value && attr.value.includes('javascript:')) {
-          el.removeAttribute(attr.name);
-        }
-      });
-    });
-    
-    const sanitized = doc.body.innerHTML;
-    return sanitized || html; // Return original if body is empty
-  } catch (error) {
-    console.error('Sanitize HTML error:', error);
-    // Fallback: return escaped HTML
-    const div = document.createElement('div');
-    div.textContent = html;
-    return div.innerHTML;
-  }
-}
-
-function previewHtml() {
-  const htmlContent = elements.htmlPasteInput.value.trim();
-  if (!htmlContent) {
-    showToast("Mohon paste HTML content terlebih dahulu.");
-    return;
-  }
-  
-  try {
-    const sanitized = sanitizeHtml(htmlContent);
-    elements.htmlPreviewBox.innerHTML = sanitized;
-    elements.htmlPreviewContainer.hidden = false;
-    showToast("Preview HTML berhasil ditampilkan.");
-  } catch (error) {
-    showToast("Gagal merender HTML: " + error.message);
-  }
-}
-
-function renderHtmlToChat() {
-  const htmlContent = elements.htmlPasteInput.value.trim();
-  if (!htmlContent) {
-    showToast("Mohon paste HTML content terlebih dahulu.");
-    return;
-  }
-  
-  try {
-    const sanitized = sanitizeHtml(htmlContent);
-    
-    // Create a message with HTML content
-    const activeConversation = getActiveConversation();
-    if (!activeConversation) {
-      newConversation();
-    }
-    
-    const message = {
-      id: makeId(),
-      role: "user",
-      content: "🔗 **HTML Content**\n\n```html\n" + htmlContent + "\n```",
-      htmlContent: sanitized,
-      createdAt: new Date().toISOString(),
-      pending: false
-    };
-    
-    getActiveConversation().messages.push(message);
-    saveConversations();
-    renderAll();
-    
-    // Close dialog
-    elements.htmlPasteDialog.close();
-    elements.htmlPasteInput.value = "";
-    elements.htmlPreviewContainer.hidden = true;
-    elements.htmlPreviewBox.innerHTML = "";
-    
-    showToast("HTML telah ditambahkan ke chat.");
-  } catch (error) {
-    showToast("Gagal menambahkan HTML: " + error.message);
-  }
-}
-
-// HTML Paste event listeners
-elements.htmlPasteButton.addEventListener("click", () => {
-  elements.htmlPasteDialog.showModal();
-});
-
-elements.closeHtmlPasteButton.addEventListener("click", () => {
-  elements.htmlPasteDialog.close();
-});
-
-elements.htmlPreviewButton.addEventListener("click", previewHtml);
-elements.htmlRenderButton.addEventListener("click", renderHtmlToChat);
-
-elements.htmlPasteDialog.addEventListener("keydown", (event) => {
-  if (event.key === "Escape") {
-    elements.htmlPasteDialog.close();
-  }
 });
 
 loadTheme();

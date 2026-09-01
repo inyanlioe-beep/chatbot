@@ -368,7 +368,7 @@ function serveStatic(request, response, pathname) {
       "Content-Type": MIME_TYPES[ext] || "application/octet-stream",
       "Cache-Control": cachePolicy,
       "X-Content-Type-Options": "nosniff",
-      "Content-Security-Policy": "default-src 'self'; style-src 'self'; script-src 'self'; img-src 'self' data:; connect-src 'self'; font-src 'self'",
+      "Content-Security-Policy": "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'; img-src 'self' data: https:; connect-src 'self'; font-src 'self' https:",
       "Referrer-Policy": "no-referrer"
     });
     if (request.method === "HEAD") return response.end();

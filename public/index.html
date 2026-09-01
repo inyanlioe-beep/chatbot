@@ -102,9 +102,6 @@
               <button class="attachment-button" id="attachmentButton" type="button" title="Lampirkan file" aria-label="Lampirkan file">
                 <span aria-hidden="true">📎</span>
               </button>
-              <button class="attachment-button" id="htmlPasteButton" type="button" title="Paste & Render HTML" aria-label="Paste & Render HTML">
-                <span aria-hidden="true">🔗</span>
-              </button>
               <textarea id="messageInput" rows="1" placeholder="Ketik pesan untuk AI Provider…" aria-label="Pesan"></textarea>
             </div>
             <input type="file" id="fileInput" hidden accept="image/*,.pdf,.doc,.docx,.txt,.md,.csv,.xlsx,.pptx" />
@@ -182,35 +179,6 @@
           <button class="primary-button" value="default" type="submit">Simpan pengaturan</button>
         </div>
       </form>
-    </dialog>
-
-    <dialog class="html-paste-dialog" id="htmlPasteDialog">
-      <div class="html-paste-panel">
-        <div class="html-paste-header">
-          <div>
-            <p class="eyebrow">Paste HTML Content</p>
-            <h2>Render HTML</h2>
-          </div>
-          <button class="dialog-close" id="closeHtmlPasteButton" type="button" aria-label="Tutup" title="Tutup">×</button>
-        </div>
-
-        <div class="html-paste-content">
-          <label class="field">
-            <span>Paste HTML content di bawah:</span>
-            <textarea id="htmlPasteInput" rows="8" placeholder="Paste HTML content di sini..." aria-label="HTML Content"></textarea>
-          </label>
-
-          <div id="htmlPreviewContainer" class="html-preview-container" hidden>
-            <h3>Preview:</h3>
-            <div id="htmlPreviewBox" class="html-preview-box"></div>
-          </div>
-        </div>
-
-        <div class="html-paste-actions">
-          <button class="secondary-button" id="htmlPreviewButton" type="button">Preview</button>
-          <button class="primary-button" id="htmlRenderButton" type="button">Render ke chat</button>
-        </div>
-      </div>
     </dialog>
 
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
