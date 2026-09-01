@@ -25,6 +25,29 @@ test("validateMessages membuang properti yang tidak diperlukan", () => {
   assert.throws(() => validateMessages([{ role: "tool", content: "x" }]), /tidak valid/i);
 });
 
+test("validateMessages menerima konten vision dan menolak gambar tidak valid", () => {
+  const ok = validateMessages([
+    {
+      role: "user",
+      content: [
+        { type: "text", text: "Lihat gambar ini" },
+        { type: "image_url", image_url: { url: "data:image/png;base64,iVBORw0KGgo=" } }
+      ]
+    }
+  ]);
+  assert.equal(ok[0].content.length, 2);
+  assert.equal(ok[0].content[1].type, "image_url");
+
+  assert.throws(
+    () => validateMessages([{ role: "user", content: [{ type: "image_url", image_url: { url: "http://evil.test/x.png" } }] }]),
+    /gambar/i
+  );
+  assert.throws(
+    () => validateMessages([{ role: "user", content: [{ type: "text", text: "" }] }]),
+    /tidak valid/i
+  );
+});
+
 test("server menyajikan konfigurasi tanpa membocorkan API key", async () => {
   const server = createAppServer({
     apiKey: "rahasia-sekali",

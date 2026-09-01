@@ -56,7 +56,10 @@ const elements = {
   temperatureInput: document.querySelector("#temperatureInput"),
   themeToggle: document.querySelector("#themeToggle"),
   toast: document.querySelector("#toast"),
-  welcomeView: document.querySelector("#welcomeView")
+  welcomeView: document.querySelector("#welcomeView"),
+  lightbox: document.querySelector("#lightbox"),
+  lightboxImage: document.querySelector("#lightboxImage"),
+  lightboxClose: document.querySelector("#lightboxClose")
 };
 
 function makeId() {
@@ -96,7 +99,24 @@ function loadState() {
 }
 
 function saveConversations() {
-  localStorage.setItem(CHAT_STORAGE_KEY, JSON.stringify(state.conversations));
+  try {
+    localStorage.setItem(CHAT_STORAGE_KEY, JSON.stringify(state.conversations));
+  } catch {
+    // ponytail: kuota localStorage habis karena gambar base64 — simpan tanpa data gambar; upgrade: IndexedDB/server upload.
+    const stripped = state.conversations.map((conversation) => ({
+      ...conversation,
+      messages: conversation.messages.map((message) =>
+        message.images?.length
+          ? { ...message, images: message.images.map(({ id, fileName }) => ({ id, fileName, dataUrl: "" })) }
+          : message
+      )
+    }));
+    try {
+      localStorage.setItem(CHAT_STORAGE_KEY, JSON.stringify(stripped));
+    } catch {
+      // State tetap di memori; dicoba lagi pada aksi berikutnya.
+    }
+  }
 }
 
 function saveSettings() {
@@ -161,6 +181,17 @@ function getSelectedModel() {
 
 function updateModelLabel() {
   elements.activeModelLabel.textContent = getSelectedModel() || "Model default server";
+}
+
+function openLightbox(imageUrl) {
+  elements.lightboxImage.src = imageUrl;
+  elements.lightboxImage.alt = "Gambar yang diperbesar";
+  elements.lightbox.classList.add("active");
+}
+
+function closeLightbox() {
+  elements.lightbox.classList.remove("active");
+  elements.lightboxImage.src = "";
 }
 
 function renderSidebar() {
@@ -316,9 +347,11 @@ function renderMathExpressions(html) {
 
 function renderMarkdownToHtml(markdown) {
   const normalized = String(markdown || "").replace(/\r\n/g, "\n");
-  if (!normalized.trim()) return "";
+  // Remove internal model tags (e.g., <close>, <response>, <sepl>, <message>) that shouldn't appear in output
+  const cleaned = normalized.replace(/<\/?(?:close|response|sepl|message)[^>]*>/gi, "");
+  if (!cleaned.trim()) return "";
 
-  const lines = normalized.split("\n");
+  const lines = cleaned.split("\n");
   const output = [];
   let paragraphBuffer = [];
   let listBuffer = [];
@@ -492,8 +525,9 @@ function createMessageElement(message, index, isLast) {
   }
 
   // Display pasted images if any
+  let imageContainer = null;
   if (message.images && message.images.length > 0) {
-    const imageContainer = document.createElement("div");
+    imageContainer = document.createElement("div");
     imageContainer.className = "message-images";
     imageContainer.style.display = "flex";
     imageContainer.style.flexWrap = "wrap";
@@ -501,12 +535,18 @@ function createMessageElement(message, index, isLast) {
     imageContainer.style.marginTop = "12px";
     
     message.images.forEach((imgData) => {
+      if (!imgData.dataUrl) return;
       const imgWrapper = document.createElement("div");
       imgWrapper.style.borderRadius = "8px";
       imgWrapper.style.overflow = "hidden";
       imgWrapper.style.border = "1px solid var(--line)";
       imgWrapper.style.maxWidth = "240px";
       imgWrapper.style.maxHeight = "240px";
+      imgWrapper.style.cursor = "pointer";
+      imgWrapper.style.transition = "opacity 150ms ease";
+      imgWrapper.role = "button";
+      imgWrapper.tabIndex = 0;
+      imgWrapper.title = "Klik untuk melihat ukuran penuh";
       
       const img = document.createElement("img");
       img.src = imgData.dataUrl;
@@ -516,14 +556,28 @@ function createMessageElement(message, index, isLast) {
       img.style.objectFit = "contain";
       img.style.display = "block";
       
+      const clickHandler = () => openLightbox(imgData.dataUrl);
+      imgWrapper.addEventListener("click", clickHandler);
+      imgWrapper.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          clickHandler();
+        }
+      });
+      imgWrapper.addEventListener("mouseenter", () => {
+        imgWrapper.style.opacity = "0.8";
+      });
+      imgWrapper.addEventListener("mouseleave", () => {
+        imgWrapper.style.opacity = "1";
+      });
+      
       imgWrapper.appendChild(img);
       imageContainer.appendChild(imgWrapper);
     });
-    
-    body.appendChild(imageContainer);
   }
 
   body.append(meta, content);
+  if (imageContainer) body.append(imageContainer);
 
   if (!message.pending) {
     const actions = document.createElement("div");
@@ -618,15 +672,18 @@ function extractDelta(payload) {
     ?.filter((part) => part?.type === "text")
     .map((part) => part.text || "")
     .join("");
-  if (bluepackText) return bluepackText;
-
-  const choice = payload?.choices?.[0];
-  const delta = choice?.delta?.content ?? choice?.delta?.reasoning_content;
-  if (typeof delta === "string") return delta;
-  if (Array.isArray(delta)) {
-    return delta.map((part) => part?.text || part?.content || "").join("");
-  }
-  return choice?.message?.content || "";
+  const text = bluepackText || (() => {
+    const choice = payload?.choices?.[0];
+    const delta = choice?.delta?.content ?? choice?.delta?.reasoning_content;
+    if (typeof delta === "string") return delta;
+    if (Array.isArray(delta)) {
+      return delta.map((part) => part?.text || part?.content || "").join("");
+    }
+    return choice?.message?.content || "";
+  })();
+  
+  // Remove internal model tags that shouldn't appear in output
+  return String(text || "").replace(/<\/?(?:close|response|sepl|message)[^>]*>/gi, "");
 }
 
 async function consumeEventStream(response, onDelta) {
@@ -674,7 +731,16 @@ async function requestCompletion(conversation) {
 
   const messages = conversation.messages
     .filter((message) => !message.pending)
-    .map(({ role, content }) => ({ role, content }));
+    .map(({ role, content, images }) => {
+      if (role !== "user" || !images?.length) return { role, content };
+      const imageParts = images
+        .filter((img) => img.dataUrl)
+        .map((img) => ({ type: "image_url", image_url: { url: img.dataUrl } }));
+      const parts = content?.trim()
+        ? [{ type: "text", text: content }, ...imageParts]
+        : imageParts;
+      return { role, content: parts };
+    });
   if (state.settings.systemPrompt.trim()) {
     messages.unshift({ role: "system", content: state.settings.systemPrompt.trim() });
   }
@@ -749,7 +815,8 @@ async function requestCompletion(conversation) {
 
 async function sendMessage(text) {
   const trimmed = text.trim();
-  if (!trimmed || state.streaming) return;
+  const hasImages = state.pastedImages.length > 0;
+  if ((!trimmed && !hasImages) || state.streaming) return;
 
   const conversation = getActiveConversation();
   const now = new Date().toISOString();
@@ -766,7 +833,9 @@ async function sendMessage(text) {
   conversation.updatedAt = now;
 
   if (conversation.title === "Percakapan baru") {
-    conversation.title = trimmed.length > 42 ? `${trimmed.slice(0, 42).trim()}…` : trimmed;
+    conversation.title = trimmed
+      ? (trimmed.length > 42 ? `${trimmed.slice(0, 42).trim()}…` : trimmed)
+      : "Gambar";
   }
 
   elements.messageInput.value = "";
@@ -994,6 +1063,17 @@ elements.closeSettingsButton.addEventListener("click", () => elements.settingsDi
 elements.sidebarBackdrop.addEventListener("click", closeSidebar);
 elements.refreshModelsButton.addEventListener("click", loadModels);
 elements.themeToggle.addEventListener("click", toggleTheme);
+
+// Lightbox event listeners
+elements.lightboxClose.addEventListener("click", closeLightbox);
+elements.lightbox.addEventListener("click", (event) => {
+  if (event.target === elements.lightbox) closeLightbox();
+});
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && elements.lightbox.classList.contains("active")) {
+    closeLightbox();
+  }
+});
 
 elements.settingsForm.addEventListener("submit", (event) => {
   event.preventDefault();

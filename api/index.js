@@ -146,20 +146,62 @@ function validateMessages(messages) {
   }
 
   const validRoles = new Set(["system", "user", "assistant"]);
+  const dataUrlPattern = /^data:image\/(png|jpe?g|webp|gif);base64,[A-Za-z0-9+/=]+$/i;
+
   return messages.map((message) => {
-    if (
-      !message ||
-      !validRoles.has(message.role) ||
-      typeof message.content !== "string" ||
-      !message.content.trim()
-    ) {
+    if (!message || !validRoles.has(message.role)) {
       throw Object.assign(new Error("Format pesan tidak valid."), { statusCode: 400 });
     }
-    if (message.content.length > 50000) {
-      throw Object.assign(new Error("Salah satu pesan terlalu panjang."), { statusCode: 400 });
+
+    if (typeof message.content === "string") {
+      if (!message.content.trim()) {
+        throw Object.assign(new Error("Format pesan tidak valid."), { statusCode: 400 });
+      }
+      if (message.content.length > 50000) {
+        throw Object.assign(new Error("Salah satu pesan terlalu panjang."), { statusCode: 400 });
+      }
+      return { role: message.role, content: message.content };
     }
-    return { role: message.role, content: message.content };
+
+    if (Array.isArray(message.content)) {
+      if (!message.content.length || message.content.length > 20) {
+        throw Object.assign(new Error("Format pesan tidak valid."), { statusCode: 400 });
+      }
+      const parts = message.content.map((part) => {
+        if (part?.type === "text") {
+          if (typeof part.text !== "string" || !part.text.trim()) {
+            throw Object.assign(new Error("Format pesan tidak valid."), { statusCode: 400 });
+          }
+          return { type: "text", text: part.text.slice(0, 50000) };
+        }
+        if (part?.type === "image_url") {
+          const url = part.image_url?.url;
+          if (typeof url !== "string" || !dataUrlPattern.test(url)) {
+            throw Object.assign(new Error("Gambar harus berupa data URL base64 (png/jpeg/webp/gif)."), { statusCode: 400 });
+          }
+          return { type: "image_url", image_url: { url } };
+        }
+        throw Object.assign(new Error("Format pesan tidak valid."), { statusCode: 400 });
+      });
+      return { role: message.role, content: parts };
+    }
+
+    throw Object.assign(new Error("Format pesan tidak valid."), { statusCode: 400 });
   });
+}
+
+function toBluepackContent(content) {
+  if (typeof content === "string") return content;
+  return content.map((part) => {
+    if (part.type === "text") return { type: "text", text: part.text };
+    const [, mediaType, data] = /^data:(image\/[a-zA-Z0-9.+-]+);base64,(.+)$/.exec(part.image_url.url);
+    return { type: "image", source: { type: "base64", media_type: mediaType, data } };
+  });
+}
+
+function extractMessageText(content) {
+  if (typeof content === "string") return content;
+  return content.filter((part) => part.type === "text").map((part) => part.text).join("\n\n");
 }
 
 function getUpstreamError(body, status) {
@@ -240,8 +282,12 @@ async function proxyChat(request, res, config) {
     ? {
         model,
         max_tokens: boundedMaxTokens,
-        messages: messages.filter((message) => message.role !== "system"),
-        ...(systemMessages.length ? { system: systemMessages.map((message) => message.content).join("\n\n") } : {})
+        messages: messages
+          .filter((message) => message.role !== "system")
+          .map((message) => ({ role: message.role, content: toBluepackContent(message.content) })),
+        ...(systemMessages.length
+          ? { system: systemMessages.map((message) => extractMessageText(message.content)).join("\n\n") }
+          : {})
       }
     : {
         model,
