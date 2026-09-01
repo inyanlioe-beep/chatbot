@@ -63,7 +63,15 @@ const elements = {
   lightboxClose: document.querySelector("#lightboxClose"),
   attachmentButton: document.querySelector("#attachmentButton"),
   attachmentPreview: document.querySelector("#attachmentPreview"),
-  fileInput: document.querySelector("#fileInput")
+  fileInput: document.querySelector("#fileInput"),
+  htmlPasteButton: document.querySelector("#htmlPasteButton"),
+  htmlPasteDialog: document.querySelector("#htmlPasteDialog"),
+  htmlPasteInput: document.querySelector("#htmlPasteInput"),
+  htmlPreviewButton: document.querySelector("#htmlPreviewButton"),
+  htmlRenderButton: document.querySelector("#htmlRenderButton"),
+  htmlPreviewContainer: document.querySelector("#htmlPreviewContainer"),
+  htmlPreviewBox: document.querySelector("#htmlPreviewBox"),
+  closeHtmlPasteButton: document.querySelector("#closeHtmlPasteButton")
 };
 
 function makeId() {
@@ -526,6 +534,14 @@ function createMessageElement(message, index, isLast) {
     content.append(dots);
   } else {
     appendTextBlocks(content, message.content);
+  }
+
+  // Display HTML content if present
+  if (message.htmlContent) {
+    const htmlContainer = document.createElement("div");
+    htmlContainer.className = "html-rendered-content";
+    htmlContainer.innerHTML = message.htmlContent;
+    content.append(htmlContainer);
   }
 
   // Display pasted images if any
@@ -1185,6 +1201,104 @@ elements.suggestionGrid.addEventListener("click", (event) => {
   elements.messageInput.value = button.dataset.prompt;
   autoResizeInput();
   elements.messageInput.focus();
+});
+
+// HTML Paste functionality
+function sanitizeHtml(html) {
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(html, 'text/html');
+  
+  // Remove potentially dangerous elements
+  const dangerousElements = doc.querySelectorAll('script, style, iframe, object, embed, link, meta, form, input, button');
+  dangerousElements.forEach(el => el.remove());
+  
+  // Remove event attributes
+  const allElements = doc.querySelectorAll('*');
+  allElements.forEach(el => {
+    Array.from(el.attributes).forEach(attr => {
+      if (attr.name.startsWith('on')) {
+        el.removeAttribute(attr.name);
+      }
+    });
+  });
+  
+  return doc.body.innerHTML;
+}
+
+function previewHtml() {
+  const htmlContent = elements.htmlPasteInput.value.trim();
+  if (!htmlContent) {
+    showToast("Mohon paste HTML content terlebih dahulu.");
+    return;
+  }
+  
+  try {
+    const sanitized = sanitizeHtml(htmlContent);
+    elements.htmlPreviewBox.innerHTML = sanitized;
+    elements.htmlPreviewContainer.hidden = false;
+    showToast("Preview HTML berhasil ditampilkan.");
+  } catch (error) {
+    showToast("Gagal merender HTML: " + error.message);
+  }
+}
+
+function renderHtmlToChat() {
+  const htmlContent = elements.htmlPasteInput.value.trim();
+  if (!htmlContent) {
+    showToast("Mohon paste HTML content terlebih dahulu.");
+    return;
+  }
+  
+  try {
+    const sanitized = sanitizeHtml(htmlContent);
+    
+    // Create a message with HTML content
+    const activeConversation = getActiveConversation();
+    if (!activeConversation) {
+      newConversation();
+    }
+    
+    const message = {
+      id: makeId(),
+      role: "user",
+      content: "🔗 **HTML Content**\n\n```html\n" + htmlContent + "\n```",
+      htmlContent: sanitized,
+      createdAt: new Date().toISOString(),
+      pending: false
+    };
+    
+    getActiveConversation().messages.push(message);
+    saveConversations();
+    renderAll();
+    
+    // Close dialog
+    elements.htmlPasteDialog.close();
+    elements.htmlPasteInput.value = "";
+    elements.htmlPreviewContainer.hidden = true;
+    elements.htmlPreviewBox.innerHTML = "";
+    
+    showToast("HTML telah ditambahkan ke chat.");
+  } catch (error) {
+    showToast("Gagal menambahkan HTML: " + error.message);
+  }
+}
+
+// HTML Paste event listeners
+elements.htmlPasteButton.addEventListener("click", () => {
+  elements.htmlPasteDialog.showModal();
+});
+
+elements.closeHtmlPasteButton.addEventListener("click", () => {
+  elements.htmlPasteDialog.close();
+});
+
+elements.htmlPreviewButton.addEventListener("click", previewHtml);
+elements.htmlRenderButton.addEventListener("click", renderHtmlToChat);
+
+elements.htmlPasteDialog.addEventListener("keydown", (event) => {
+  if (event.key === "Escape") {
+    elements.htmlPasteDialog.close();
+  }
 });
 
 loadTheme();
