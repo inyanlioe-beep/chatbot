@@ -978,6 +978,14 @@ elements.messageInput.addEventListener("keydown", (event) => {
   }
 });
 
+// Function to detect if text is HTML
+function isHtmlContent(text) {
+  const trimmed = text.trim();
+  // Check if it starts with < and contains HTML tags
+  const htmlTagPattern = /<\s*\/?\s*([a-z][a-z0-9]*)\b[^>]*>/i;
+  return htmlTagPattern.test(trimmed);
+}
+
 elements.messageInput.addEventListener("paste", async (event) => {
   const clipboardData = event.clipboardData || window.clipboardData;
   if (!clipboardData) return;
@@ -1003,7 +1011,55 @@ elements.messageInput.addEventListener("paste", async (event) => {
     }
   }
 
-  // If no image, handle formatted text from Word
+  // Check for HTML content
+  if (!foundImage && clipboardData.types.includes("text/html")) {
+    const htmlContent = clipboardData.getData("text/html");
+    const plainText = clipboardData.getData("text/plain");
+    
+    // Check if content looks like HTML
+    if (isHtmlContent(htmlContent) || isHtmlContent(plainText)) {
+      event.preventDefault();
+      
+      // Auto-render HTML to chat
+      const contentToRender = isHtmlContent(htmlContent) ? htmlContent : plainText;
+      
+      try {
+        const sanitized = sanitizeHtml(contentToRender);
+        
+        // Create and add message with HTML content
+        const activeConversation = getActiveConversation();
+        if (!activeConversation) {
+          newConversation();
+        }
+        
+        const message = {
+          id: makeId(),
+          role: "user",
+          content: "🔗 **HTML Content**\n\n```html\n" + contentToRender + "\n```",
+          htmlContent: sanitized,
+          createdAt: new Date().toISOString(),
+          pending: false
+        };
+        
+        getActiveConversation().messages.push(message);
+        saveConversations();
+        renderAll();
+        
+        showToast("HTML berhasil di-paste dan di-render otomatis!");
+        
+        // Clear input
+        elements.messageInput.value = "";
+        autoResizeInput();
+        elements.messageInput.focus();
+      } catch (error) {
+        showToast("Gagal merender HTML: " + error.message);
+      }
+      
+      return;
+    }
+  }
+
+  // If no image or HTML, handle formatted text from Word
   if (!foundImage && clipboardData.types.includes("text/html")) {
     event.preventDefault();
     const html = clipboardData.getData("text/html");
