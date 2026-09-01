@@ -537,11 +537,21 @@ function createMessageElement(message, index, isLast) {
   }
 
   // Display HTML content if present
-  if (message.htmlContent) {
-    const htmlContainer = document.createElement("div");
-    htmlContainer.className = "html-rendered-content";
-    htmlContainer.innerHTML = message.htmlContent;
-    content.append(htmlContainer);
+  if (message.htmlContent && message.htmlContent.trim()) {
+    try {
+      const htmlContainer = document.createElement("div");
+      htmlContainer.className = "html-rendered-content";
+      htmlContainer.innerHTML = message.htmlContent;
+      content.append(htmlContainer);
+    } catch (error) {
+      console.error("Error rendering HTML content:", error);
+      // Fallback: show as text if rendering fails
+      const fallback = document.createElement("pre");
+      fallback.style.overflow = "auto";
+      fallback.style.fontSize = "12px";
+      fallback.textContent = message.htmlContent;
+      content.append(fallback);
+    }
   }
 
   // Display pasted images if any
@@ -976,14 +986,87 @@ elements.messageInput.addEventListener("keydown", (event) => {
     event.preventDefault();
     elements.chatForm.requestSubmit();
   }
+  
+  // Handle Ctrl+V or Cmd+V paste for better detection
+  if ((event.ctrlKey || event.metaKey) && event.key === "v") {
+    // Small delay to allow paste to complete
+    setTimeout(() => {
+      const pastedText = elements.messageInput.value.trim();
+      if (pastedText && isHtmlContent(pastedText)) {
+        // Check if we should auto-render this HTML
+        elements.messageInput.value = ""; // Clear input
+        autoResizeInput();
+        
+        try {
+          // Ensure conversation exists
+          let activeConversation = getActiveConversation();
+          if (!activeConversation) {
+            newConversation();
+            activeConversation = getActiveConversation();
+          }
+          
+          if (!activeConversation) {
+            throw new Error("Gagal membuat percakapan baru");
+          }
+          
+          const sanitized = sanitizeHtml(pastedText);
+          
+          if (!sanitized || sanitized.trim().length === 0) {
+            showToast("⚠️ HTML kosong atau tidak valid");
+            elements.messageInput.value = pastedText;
+            return;
+          }
+          
+          const message = {
+            id: makeId(),
+            role: "user",
+            content: "🔗 **HTML Content**\n\n```html\n" + pastedText + "\n```",
+            htmlContent: sanitized,
+            createdAt: new Date().toISOString(),
+            pending: false
+          };
+          
+          activeConversation.messages.push(message);
+          saveConversations();
+          renderAll();
+          
+          showToast("✅ HTML berhasil di-paste dan di-render!");
+          elements.messageInput.focus();
+        } catch (error) {
+          console.error("Error rendering HTML from Ctrl+V:", error);
+          showToast("❌ Error: " + (error.message || "Gagal merender HTML"));
+          elements.messageInput.value = pastedText; // Restore text if failed
+        }
+      }
+    }, 10);
+  }
 });
 
 // Function to detect if text is HTML
 function isHtmlContent(text) {
+  if (!text || typeof text !== 'string') return false;
+  
   const trimmed = text.trim();
-  // Check if it starts with < and contains HTML tags
-  const htmlTagPattern = /<\s*\/?\s*([a-z][a-z0-9]*)\b[^>]*>/i;
-  return htmlTagPattern.test(trimmed);
+  
+  // Check for common HTML patterns
+  const htmlPatterns = [
+    /<html/i,                  // Full HTML document
+    /<head/i,                  // HTML head tag
+    /<body/i,                  // HTML body tag
+    /<div/i,                   // Common container
+    /<p>/i,                    // Paragraph
+    /<h[1-6]/i,                // Headings
+    /<table/i,                 // Table
+    /<ul|<ol/i,                // Lists
+    /<img/i,                   // Images
+    /<br/i,                    // Line breaks
+    /<span/i,                  // Span
+    /<a\s+href/i,              // Links
+    /<!DOCTYPE/i,              // DOCTYPE declaration
+    /<!--/,                    // HTML comments
+  ];
+  
+  return htmlPatterns.some(pattern => pattern.test(trimmed));
 }
 
 elements.messageInput.addEventListener("paste", async (event) => {
@@ -1011,79 +1094,90 @@ elements.messageInput.addEventListener("paste", async (event) => {
     }
   }
 
-  // Check for HTML content
-  if (!foundImage && clipboardData.types.includes("text/html")) {
-    const htmlContent = clipboardData.getData("text/html");
-    const plainText = clipboardData.getData("text/plain");
+  if (foundImage) return; // Exit if image was processed
+
+  // Try to get HTML content first (from web pages, rich text editors)
+  let htmlContent = clipboardData.types.includes("text/html") ? clipboardData.getData("text/html") : null;
+  let plainText = clipboardData.types.includes("text/plain") ? clipboardData.getData("text/plain") : null;
+
+  // Detect if it's HTML
+  const isHtml = isHtmlContent(htmlContent) || isHtmlContent(plainText);
+  
+  if (isHtml && (htmlContent || plainText)) {
+    event.preventDefault();
     
-    // Check if content looks like HTML
-    if (isHtmlContent(htmlContent) || isHtmlContent(plainText)) {
-      event.preventDefault();
-      
-      // Auto-render HTML to chat
-      const contentToRender = isHtmlContent(htmlContent) ? htmlContent : plainText;
-      
-      try {
-        const sanitized = sanitizeHtml(contentToRender);
-        
-        // Create and add message with HTML content
-        const activeConversation = getActiveConversation();
-        if (!activeConversation) {
-          newConversation();
-        }
-        
-        const message = {
-          id: makeId(),
-          role: "user",
-          content: "🔗 **HTML Content**\n\n```html\n" + contentToRender + "\n```",
-          htmlContent: sanitized,
-          createdAt: new Date().toISOString(),
-          pending: false
-        };
-        
-        getActiveConversation().messages.push(message);
-        saveConversations();
-        renderAll();
-        
-        showToast("HTML berhasil di-paste dan di-render otomatis!");
-        
-        // Clear input
-        elements.messageInput.value = "";
-        autoResizeInput();
-        elements.messageInput.focus();
-      } catch (error) {
-        showToast("Gagal merender HTML: " + error.message);
+    // Use HTML if available, otherwise use plain text
+    const contentToRender = htmlContent || plainText;
+    
+    try {
+      // Ensure conversation exists
+      let activeConversation = getActiveConversation();
+      if (!activeConversation) {
+        newConversation();
+        activeConversation = getActiveConversation();
       }
       
-      return;
+      if (!activeConversation) {
+        throw new Error("Gagal membuat percakapan baru");
+      }
+      
+      // Sanitize HTML
+      const sanitized = sanitizeHtml(contentToRender);
+      
+      if (!sanitized || sanitized.trim().length === 0) {
+        showToast("⚠️ HTML kosong atau tidak valid setelah sanitasi");
+        return;
+      }
+      
+      const message = {
+        id: makeId(),
+        role: "user",
+        content: "🔗 **HTML Content**\n\n```html\n" + contentToRender + "\n```",
+        htmlContent: sanitized,
+        createdAt: new Date().toISOString(),
+        pending: false
+      };
+      
+      activeConversation.messages.push(message);
+      saveConversations();
+      renderAll();
+      
+      showToast("✅ HTML berhasil di-paste dan di-render!");
+      
+      // Clear input
+      elements.messageInput.value = "";
+      autoResizeInput();
+      elements.messageInput.focus();
+    } catch (error) {
+      console.error("Error rendering HTML:", error);
+      showToast("❌ Error: " + (error.message || "Gagal merender HTML"));
     }
+    
+    return;
   }
 
-  // If no image or HTML, handle formatted text from Word
-  if (!foundImage && clipboardData.types.includes("text/html")) {
+  // If not HTML, handle as formatted text (from Word docs, etc)
+  if (htmlContent || plainText) {
     event.preventDefault();
-    const html = clipboardData.getData("text/html");
-    const text = clipboardData.getData("text/plain");
     
-    // Extract text from HTML and preserve basic formatting
-    const textarea = document.createElement("textarea");
-    textarea.innerHTML = html;
-    let extractedText = textarea.value;
+    // Extract text from HTML if available
+    let extractedText = plainText;
     
-    // Use plain text if extracted text is empty
-    if (!extractedText.trim()) {
-      extractedText = text;
+    if (htmlContent && !plainText) {
+      const textarea = document.createElement("textarea");
+      textarea.innerHTML = htmlContent;
+      extractedText = textarea.value;
     }
     
-    // Preserve line breaks and clean up excess whitespace
-    extractedText = extractedText
-      .split(/\n+/)
-      .map(line => line.trim())
-      .filter(line => line)
-      .join("\n");
-    
-    // Insert the formatted text into the input
-    if (extractedText) {
+    if (extractedText && extractedText.trim()) {
+      // Preserve line breaks and clean up excess whitespace
+      extractedText = extractedText
+        .split(/\n+/)
+        .map(line => line.trim())
+        .filter(line => line)
+        .join("\n");
+      
+      // Insert the text into the input
       const currentText = elements.messageInput.value;
       const selectionStart = elements.messageInput.selectionStart;
       const selectionEnd = elements.messageInput.selectionEnd;
@@ -1261,24 +1355,50 @@ elements.suggestionGrid.addEventListener("click", (event) => {
 
 // HTML Paste functionality
 function sanitizeHtml(html) {
-  const parser = new DOMParser();
-  const doc = parser.parseFromString(html, 'text/html');
-  
-  // Remove potentially dangerous elements
-  const dangerousElements = doc.querySelectorAll('script, style, iframe, object, embed, link, meta, form, input, button');
-  dangerousElements.forEach(el => el.remove());
-  
-  // Remove event attributes
-  const allElements = doc.querySelectorAll('*');
-  allElements.forEach(el => {
-    Array.from(el.attributes).forEach(attr => {
-      if (attr.name.startsWith('on')) {
-        el.removeAttribute(attr.name);
-      }
+  try {
+    if (!html || typeof html !== 'string') {
+      return '';
+    }
+    
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(html, 'text/html');
+    
+    // Check for parsing errors
+    if (doc.body.textContent === '' && html.trim() !== '') {
+      // If parsing failed and original had content, return escaped HTML
+      const div = document.createElement('div');
+      div.textContent = html;
+      return div.innerHTML;
+    }
+    
+    // Remove potentially dangerous elements
+    const dangerousElements = doc.querySelectorAll('script, style, iframe, object, embed, link, meta, form, input, button[type="submit"], button[type="reset"]');
+    dangerousElements.forEach(el => el.remove());
+    
+    // Remove event attributes
+    const allElements = doc.querySelectorAll('*');
+    allElements.forEach(el => {
+      Array.from(el.attributes).forEach(attr => {
+        // Remove event handlers
+        if (attr.name.startsWith('on')) {
+          el.removeAttribute(attr.name);
+        }
+        // Remove javascript: protocol
+        if (attr.value && attr.value.includes('javascript:')) {
+          el.removeAttribute(attr.name);
+        }
+      });
     });
-  });
-  
-  return doc.body.innerHTML;
+    
+    const sanitized = doc.body.innerHTML;
+    return sanitized || html; // Return original if body is empty
+  } catch (error) {
+    console.error('Sanitize HTML error:', error);
+    // Fallback: return escaped HTML
+    const div = document.createElement('div');
+    div.textContent = html;
+    return div.innerHTML;
+  }
 }
 
 function previewHtml() {
