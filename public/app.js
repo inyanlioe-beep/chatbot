@@ -3,6 +3,7 @@ const SETTINGS_STORAGE_KEY = "ruang_ai_settings_v1";
 
 const defaultSettings = {
   model: "",
+  visionModel: "",
   systemPrompt: "Kamu adalah asisten AI yang membantu, akurat, dan ringkas. Jawab menggunakan bahasa yang sama dengan pengguna.",
   temperature: 0.7,
   maxTokens: 2048
@@ -57,6 +58,7 @@ const elements = {
   temperatureInput: document.querySelector("#temperatureInput"),
   themeToggle: document.querySelector("#themeToggle"),
   toast: document.querySelector("#toast"),
+  visionModelInput: document.querySelector("#visionModelInput"),
   welcomeView: document.querySelector("#welcomeView"),
   lightbox: document.querySelector("#lightbox"),
   lightboxImage: document.querySelector("#lightboxImage"),
@@ -181,6 +183,20 @@ function setConnectionState(connected, text) {
 
 function getSelectedModel() {
   return state.settings.model || state.serverConfig?.model || "";
+}
+
+function hasImageContent(messages) {
+  return messages.some(
+    (message) => Array.isArray(message.content) && message.content.some((part) => part.type === "image_url")
+  );
+}
+
+// ponytail: reroute hanya berdasarkan ada/tidaknya gambar. Naikkan ke deteksi jenis file (audio/PDF native) saat provider mendukung.
+function resolveModelForMessages(messages) {
+  const primary = getSelectedModel();
+  const vision = (state.settings.visionModel || "").trim();
+  if (!vision || vision === primary || !hasImageContent(messages)) return primary;
+  return vision;
 }
 
 function updateModelLabel() {
@@ -753,13 +769,20 @@ async function requestCompletion(conversation) {
   state.controller = controller;
   setStreaming(true);
 
+  const model = resolveModelForMessages(messages);
+  const primaryModel = getSelectedModel();
+  if (model !== primaryModel) {
+    showToast(`Reroute ke model vision: ${model}`);
+    elements.activeModelLabel.textContent = model;
+  }
+
   try {
     const response = await fetch("/api/chat", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         messages,
-        model: getSelectedModel(),
+        model,
         temperature: state.settings.temperature,
         maxTokens: state.settings.maxTokens
       }),
@@ -813,6 +836,7 @@ async function requestCompletion(conversation) {
     saveConversations();
     renderAll();
     scrollToBottom(false);
+    updateModelLabel();
     elements.messageInput.focus();
   }
 }
@@ -883,6 +907,7 @@ function closeSidebar() {
 
 function populateSettings() {
   elements.modelInput.value = state.settings.model || state.serverConfig?.model || "";
+  elements.visionModelInput.value = state.settings.visionModel || "";
   elements.systemPromptInput.value = state.settings.systemPrompt;
   elements.temperatureInput.value = state.settings.temperature;
   elements.maxTokensInput.value = state.settings.maxTokens;
@@ -1169,6 +1194,7 @@ elements.settingsForm.addEventListener("submit", (event) => {
   const maxTokens = Number(elements.maxTokensInput.value);
   state.settings = {
     model: elements.modelInput.value.trim(),
+    visionModel: elements.visionModelInput.value.trim(),
     systemPrompt: elements.systemPromptInput.value.trim(),
     temperature: Number.isFinite(temperature) ? Math.min(2, Math.max(0, temperature)) : 0.7,
     maxTokens: Number.isFinite(maxTokens) ? Math.min(65536, Math.max(1, Math.round(maxTokens))) : 2048
