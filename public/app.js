@@ -1,6 +1,10 @@
 const CHAT_STORAGE_KEY = "ruang_ai_conversations_v1";
 const SETTINGS_STORAGE_KEY = "ruang_ai_settings_v1";
 
+// Diberitahukan ke model agar tidak menolak permintaan "buat file docx":
+// UI menyediakan tombol unduh, model cukup menulis isi dokumen sebagai Markdown.
+const EXPORT_CONTEXT = "Antarmuka ini sudah menyediakan tombol \"Unduh .docx\" pada setiap jawabanmu. Jika pengguna meminta dokumen Word/DOCX, jangan menolak dan jangan menyuruh pengguna membuat filenya sendiri — tulis langsung isi dokumen lengkap dalam format Markdown; pengguna tinggal menekan tombol unduh. Agar hasil .docx rapi: gunakan judul (##), daftar berbutir, dan tabel Markdown dengan pipa (| kolom | kolom |) untuk data tabular — jangan menulis tabel sebagai teks berderet. Tulis rumus sebagai teks biasa (mis. 5x - 8 = 2x + 13) atau dalam $...$; jangan pakai LaTeX blok \\[...\\]. Jangan memotong angka (tulis Rp250.000, bukan Rp250.0).";
+
 const defaultSettings = {
   model: "",
   visionModel: "",
@@ -615,6 +619,17 @@ function createMessageElement(message, index, isLast) {
     });
     actions.append(copy);
 
+    if (message.role === "assistant" && message.content.trim() && window.ChatDocx) {
+      const download = document.createElement("button");
+      download.type = "button";
+      download.textContent = "Unduh .docx";
+      download.addEventListener("click", () => {
+        window.ChatDocx.download(message.content, getActiveConversation()?.title || "dokumen");
+        showToast("File .docx diunduh.");
+      });
+      actions.append(download);
+    }
+
     if (message.role === "assistant" && isLast && index > 0) {
       const retry = document.createElement("button");
       retry.type = "button";
@@ -761,8 +776,9 @@ async function requestCompletion(conversation) {
         : imageParts;
       return { role, content: parts };
     });
-  if (state.settings.systemPrompt.trim()) {
-    messages.unshift({ role: "system", content: state.settings.systemPrompt.trim() });
+  const systemParts = [state.settings.systemPrompt.trim(), EXPORT_CONTEXT].filter(Boolean);
+  if (systemParts.length) {
+    messages.unshift({ role: "system", content: systemParts.join("\n\n") });
   }
 
   const controller = new AbortController();
