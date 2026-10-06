@@ -61,6 +61,8 @@ test("tabel markdown menjadi tabel Word asli", () => {
   assert.equal((xml.match(/<w:tr>/g) || []).length, 3, "1 header + 2 baris data");
   assert.equal((xml.match(/<w:tc>/g) || []).length, 9);
   assert.match(xml, /<w:shd w:val="clear" w:fill="F3F4F6"\/>/, "header tabel diberi latar");
+  assert.match(xml, /<w:tblCellMar>/, "sel punya margin dalam");
+  assert.match(xml, /<w:left w:w="120" w:type="dxa"\/>/, "teks tidak menempel ke garis kiri");
   assert.doesNotMatch(xml, /\|/, "pipa markdown tidak ikut tercetak");
 });
 

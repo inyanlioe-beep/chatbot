@@ -190,6 +190,8 @@
   const TABLE_BORDERS = ["top", "left", "bottom", "right", "insideH", "insideV"]
     .map((side) => `<w:${side} w:val="single" w:sz="4" w:space="0" w:color="BFBFBF"/>`)
     .join("");
+  // Margin dalam sel agar teks tidak menempel ke garis tabel.
+  const TABLE_CELL_MARGIN = '<w:tblCellMar><w:top w:w="80" w:type="dxa"/><w:left w:w="120" w:type="dxa"/><w:bottom w:w="80" w:type="dxa"/><w:right w:w="120" w:type="dxa"/></w:tblCellMar>';
 
   function isTableRow(line) {
     return line.length > 2 && line.startsWith("|") && line.endsWith("|");
@@ -202,7 +204,7 @@
   function tableCellXml(text, header, width) {
     const runs = inlineRuns(text, header ? "<w:b/>" : "") || run("");
     const shade = header ? '<w:shd w:val="clear" w:fill="F3F4F6"/>' : "";
-    return `<w:tc><w:tcPr><w:tcW w:w="${width}" w:type="dxa"/>${shade}</w:tcPr><w:p>${runs}</w:p></w:tc>`;
+    return `<w:tc><w:tcPr><w:tcW w:w="${width}" w:type="dxa"/>${shade}</w:tcPr><w:p><w:pPr><w:spacing w:before="60" w:after="60"/></w:pPr>${runs}</w:p></w:tc>`;
   }
 
   function tableXml(rows) {
@@ -212,7 +214,7 @@
     const body = rows
       .map((row, index) => `<w:tr>${Array.from({ length: cols }, (_, col) => tableCellXml(row[col] ?? "", index === 0, width)).join("")}</w:tr>`)
       .join("");
-    return `<w:tbl><w:tblPr><w:tblW w:w="${TABLE_WIDTH}" w:type="dxa"/><w:tblBorders>${TABLE_BORDERS}</w:tblBorders></w:tblPr>${grid}${body}</w:tbl><w:p/>`;
+    return `<w:tbl><w:tblPr><w:tblW w:w="${TABLE_WIDTH}" w:type="dxa"/><w:tblBorders>${TABLE_BORDERS}</w:tblBorders>${TABLE_CELL_MARGIN}</w:tblPr>${grid}${body}</w:tbl><w:p/>`;
   }
 
   function paragraph(runs, props = "") {
