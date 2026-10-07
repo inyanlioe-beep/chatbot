@@ -703,11 +703,11 @@ function setStreaming(streaming) {
 }
 
 function extractDelta(payload) {
-  const bluepackText = payload?.content
+  const anthropicText = payload?.content
     ?.filter((part) => part?.type === "text")
     .map((part) => part.text || "")
     .join("");
-  const text = bluepackText || (() => {
+  const text = anthropicText || (() => {
     const choice = payload?.choices?.[0];
     const delta = choice?.delta?.content ?? choice?.delta?.reasoning_content;
     if (typeof delta === "string") return delta;

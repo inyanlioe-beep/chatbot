@@ -48,14 +48,14 @@ function loadEnvFile(filePath = path.join(ROOT_DIR, ".env")) {
 }
 
 function readConfig() {
-  const baseUrl = process.env.BLUEPACK_BASE_URL || process.env.AGENTROUTER_BASE_URL || "https://agentrouter.org/v1";
+  const baseUrl = process.env.ANTHROPIC_BASE_URL || process.env.OPENAI_BASE_URL || "https://agentrouter.org/v1";
   return {
-    apiKey: process.env.BLUEPACK_API_KEY || process.env.AGENTROUTER_API_KEY || "",
+    apiKey: process.env.ANTHROPIC_API_KEY || process.env.OPENAI_API_KEY || "",
     baseUrl,
-    model: process.env.BLUEPACK_MODEL || process.env.AGENTROUTER_MODEL || "gpt-4o-mini",
-    provider: process.env.BLUEPACK_BASE_URL || process.env.BLUEPACK_API_KEY
-      ? "bluepack"
-      : (process.env.AGENTROUTER_PROVIDER || "openai-compatible"),
+    model: process.env.ANTHROPIC_MODEL || process.env.OPENAI_MODEL || "gpt-4o-mini",
+    provider: process.env.ANTHROPIC_BASE_URL || process.env.ANTHROPIC_API_KEY
+      ? "anthropic"
+      : (process.env.OPENAI_PROVIDER || "openai-compatible"),
     port: Number(process.env.PORT) || 3000
   };
 }
@@ -79,8 +79,8 @@ function resolveApiUrl(baseUrl, resource) {
   return `${trimmed}/${resource}`;
 }
 
-function isBluepackConfig(config) {
-  return config.provider === "bluepack" || /\/messages$/i.test(String(config.baseUrl || "").trim());
+function isAnthropicConfig(config) {
+  return config.provider === "anthropic" || /\/messages$/i.test(String(config.baseUrl || "").trim());
 }
 
 function sendJson(response, statusCode, payload) {
@@ -173,7 +173,7 @@ function validateMessages(messages) {
   });
 }
 
-function toBluepackContent(content) {
+function toAnthropicContent(content) {
   if (typeof content === "string") return content;
   return content.map((part) => {
     if (part.type === "text") return { type: "text", text: part.text };
@@ -201,7 +201,7 @@ async function proxyModels(response, config) {
     return sendJson(response, 503, { error: "API Provider key belum dikonfigurasi." });
   }
 
-  if (isBluepackConfig(config)) {
+  if (isAnthropicConfig(config)) {
     return sendJson(response, 200, { models: config.model ? [config.model] : [] });
   }
 
@@ -261,15 +261,15 @@ async function proxyChat(request, response, config) {
   const model = typeof body.model === "string" && body.model.trim() ? body.model.trim() : config.model;
   const boundedTemperature = Number.isFinite(temperature) ? Math.min(2, Math.max(0, temperature)) : 0.7;
   const boundedMaxTokens = Number.isFinite(maxTokens) ? Math.min(65536, Math.max(1, Math.round(maxTokens))) : 2048;
-  const bluepack = isBluepackConfig(config);
+  const anthropic = isAnthropicConfig(config);
   const systemMessages = messages.filter((message) => message.role === "system");
-  const upstreamBody = bluepack
+  const upstreamBody = anthropic
     ? {
         model,
         max_tokens: boundedMaxTokens,
         messages: messages
           .filter((message) => message.role !== "system")
-          .map((message) => ({ role: message.role, content: toBluepackContent(message.content) })),
+          .map((message) => ({ role: message.role, content: toAnthropicContent(message.content) })),
         ...(systemMessages.length
           ? { system: systemMessages.map((message) => extractMessageText(message.content)).join("\n\n") }
           : {})
@@ -287,12 +287,12 @@ async function proxyChat(request, response, config) {
   response.on("close", () => controller.abort());
 
   try {
-    const upstream = await fetch(resolveApiUrl(config.baseUrl, bluepack ? "messages" : "chat/completions"), {
+    const upstream = await fetch(resolveApiUrl(config.baseUrl, anthropic ? "messages" : "chat/completions"), {
       method: "POST",
       headers: {
         Authorization: `Bearer ${config.apiKey}`,
         "Content-Type": "application/json",
-        Accept: bluepack ? "application/json" : "text/event-stream, application/json"
+        Accept: anthropic ? "application/json" : "text/event-stream, application/json"
       },
       body: JSON.stringify(upstreamBody),
       signal: controller.signal

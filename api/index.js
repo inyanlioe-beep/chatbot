@@ -35,14 +35,14 @@ function loadEnvFile(filePath = path.join(ROOT_DIR, ".env")) {
 }
 
 function readConfig(env = process.env) {
-  const baseUrl = env.BLUEPACK_BASE_URL || env.AGENTROUTER_BASE_URL || DEFAULT_BASE_URL;
+  const baseUrl = env.ANTHROPIC_BASE_URL || env.OPENAI_BASE_URL || DEFAULT_BASE_URL;
   return {
-    apiKey: env.BLUEPACK_API_KEY || env.AGENTROUTER_API_KEY || "",
+    apiKey: env.ANTHROPIC_API_KEY || env.OPENAI_API_KEY || "",
     baseUrl,
-    model: env.BLUEPACK_MODEL || env.AGENTROUTER_MODEL || "gpt-4o-mini",
-    provider: env.BLUEPACK_BASE_URL || env.BLUEPACK_API_KEY
-      ? "bluepack"
-      : (env.AGENTROUTER_PROVIDER || "openai-compatible")
+    model: env.ANTHROPIC_MODEL || env.OPENAI_MODEL || "gpt-4o-mini",
+    provider: env.ANTHROPIC_BASE_URL || env.ANTHROPIC_API_KEY
+      ? "anthropic"
+      : (env.OPENAI_PROVIDER || "openai-compatible")
   };
 }
 
@@ -65,8 +65,8 @@ function resolveApiUrl(baseUrl, resource) {
   return `${trimmed}/${resource}`;
 }
 
-function isBluepackConfig(config) {
-  return config.provider === "bluepack" || /\/messages$/i.test(String(config.baseUrl || "").trim());
+function isAnthropicConfig(config) {
+  return config.provider === "anthropic" || /\/messages$/i.test(String(config.baseUrl || "").trim());
 }
 
 function sendJson(res, statusCode, payload) {
@@ -190,7 +190,7 @@ function validateMessages(messages) {
   });
 }
 
-function toBluepackContent(content) {
+function toAnthropicContent(content) {
   if (typeof content === "string") return content;
   return content.map((part) => {
     if (part.type === "text") return { type: "text", text: part.text };
@@ -218,7 +218,7 @@ async function proxyModels(res, config) {
     return sendJson(res, 200, { models: [] });
   }
 
-  if (isBluepackConfig(config)) {
+  if (isAnthropicConfig(config)) {
     return sendJson(res, 200, { models: config.model ? [config.model] : [] });
   }
 
@@ -276,15 +276,15 @@ async function proxyChat(request, res, config) {
   const maxTokens = Number(body.maxTokens);
   const model = typeof body.model === "string" && body.model.trim() ? body.model.trim() : config.model;
   const boundedMaxTokens = Number.isFinite(maxTokens) ? Math.min(65536, Math.max(1, Math.round(maxTokens))) : 2048;
-  const bluepack = isBluepackConfig(config);
+  const anthropic = isAnthropicConfig(config);
   const systemMessages = messages.filter((message) => message.role === "system");
-  const upstreamBody = bluepack
+  const upstreamBody = anthropic
     ? {
         model,
         max_tokens: boundedMaxTokens,
         messages: messages
           .filter((message) => message.role !== "system")
-          .map((message) => ({ role: message.role, content: toBluepackContent(message.content) })),
+          .map((message) => ({ role: message.role, content: toAnthropicContent(message.content) })),
         ...(systemMessages.length
           ? { system: systemMessages.map((message) => extractMessageText(message.content)).join("\n\n") }
           : {})
@@ -301,12 +301,12 @@ async function proxyChat(request, res, config) {
   const timeout = setTimeout(() => controller.abort(), 5 * 60 * 1000);
 
   try {
-    const upstream = await fetch(resolveApiUrl(config.baseUrl, bluepack ? "messages" : "chat/completions"), {
+    const upstream = await fetch(resolveApiUrl(config.baseUrl, anthropic ? "messages" : "chat/completions"), {
       method: "POST",
       headers: {
         Authorization: `Bearer ${config.apiKey}`,
         "Content-Type": "application/json",
-        Accept: bluepack ? "application/json" : "text/event-stream, application/json"
+        Accept: anthropic ? "application/json" : "text/event-stream, application/json"
       },
       body: JSON.stringify(upstreamBody),
       signal: controller.signal
@@ -352,10 +352,10 @@ async function proxyChat(request, res, config) {
     }
 
     if (typeof res.end === "function") {
-      return sendJson(res, 502, { error: `Tidak dapat terhubung ke AgentRouter: ${error.message}` });
+      return sendJson(res, 502, { error: `Tidak dapat terhubung ke OpenAI: ${error.message}` });
     }
 
-    return sendJson(res, 502, { error: `Tidak dapat terhubung ke AgentRouter: ${error.message}` });
+    return sendJson(res, 502, { error: `Tidak dapat terhubung ke OpenAI: ${error.message}` });
   } finally {
     clearTimeout(timeout);
   }

@@ -109,7 +109,7 @@ test("endpoint chat meneruskan payload dan stream AI Provider", async () => {
   }
 });
 
-test("endpoint chat mendukung format Bluepack /messages", async () => {
+test("endpoint chat mendukung format Anthropic /messages", async () => {
   let receivedPath = "";
   let receivedAuthorization = "";
   let receivedBody = null;
@@ -121,15 +121,15 @@ test("endpoint chat mendukung format Bluepack /messages", async () => {
     request.on("end", () => {
       receivedBody = JSON.parse(body);
       response.writeHead(200, { "Content-Type": "application/json" });
-      response.end(JSON.stringify({ content: [{ type: "thinking", thinking: "internal" }, { type: "text", text: "Halo dari Bluepack" }] }));
+      response.end(JSON.stringify({ content: [{ type: "thinking", thinking: "internal" }, { type: "text", text: "Halo dari Anthropic" }] }));
     });
   });
   const upstreamPort = await listen(upstream);
   const app = createAppServer({
-    apiKey: "bluepack-key",
+    apiKey: "anthropic-key",
     baseUrl: `http://127.0.0.1:${upstreamPort}/messages`,
     model: "claude-opus-5",
-    provider: "bluepack"
+    provider: "anthropic"
   });
   const appPort = await listen(app);
 
@@ -148,12 +148,12 @@ test("endpoint chat mendukung format Bluepack /messages", async () => {
 
     assert.equal(response.status, 200);
     assert.equal(receivedPath, "/messages");
-    assert.equal(receivedAuthorization, "Bearer bluepack-key");
+    assert.equal(receivedAuthorization, "Bearer anthropic-key");
     assert.equal(receivedBody.model, "claude-opus-5");
     assert.equal(receivedBody.system, "Jawab singkat");
     assert.deepEqual(receivedBody.messages, [{ role: "user", content: "Halo" }]);
     assert.equal(receivedBody.stream, undefined);
-    assert.deepEqual(payload.content[1], { type: "text", text: "Halo dari Bluepack" });
+    assert.deepEqual(payload.content[1], { type: "text", text: "Halo dari Anthropic" });
   } finally {
     await close(app);
     await close(upstream);
@@ -163,14 +163,14 @@ test("endpoint chat mendukung format Bluepack /messages", async () => {
 test("handler Vercel menanggapi /api/config dan /api/models dengan payload yang aman", async () => {
   const { handler } = require("../api/index");
   const previous = {
-    AGENTROUTER_API_KEY: process.env.AGENTROUTER_API_KEY,
-    AGENTROUTER_BASE_URL: process.env.AGENTROUTER_BASE_URL,
-    AGENTROUTER_MODEL: process.env.AGENTROUTER_MODEL
+    OPENAI_API_KEY: process.env.OPENAI_API_KEY,
+    OPENAI_BASE_URL: process.env.OPENAI_BASE_URL,
+    OPENAI_MODEL: process.env.OPENAI_MODEL
   };
 
-  process.env.AGENTROUTER_API_KEY = "";
-  process.env.AGENTROUTER_BASE_URL = "https://agentrouter.org/v1";
-  process.env.AGENTROUTER_MODEL = "gpt-4o-mini";
+  process.env.OPENAI_API_KEY = "";
+  process.env.OPENAI_BASE_URL = "https://agentrouter.org/v1";
+  process.env.OPENAI_MODEL = "gpt-4o-mini";
 
   try {
     const configRes = await handler({
