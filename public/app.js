@@ -23,7 +23,9 @@ const state = {
   toastTimer: null,
   theme: "light",
   pastedImages: [],
-  attachments: []
+  attachments: [],
+  isRecording: false,
+  recognition: null
 };
 
 const elements = {
@@ -69,7 +71,11 @@ const elements = {
   lightboxClose: document.querySelector("#lightboxClose"),
   attachmentButton: document.querySelector("#attachmentButton"),
   attachmentPreview: document.querySelector("#attachmentPreview"),
-  fileInput: document.querySelector("#fileInput")
+  fileInput: document.querySelector("#fileInput"),
+  voiceButton: document.querySelector("#voiceButton"),
+  voiceIndicator: document.querySelector("#voiceIndicator"),
+  downloadMenu: document.querySelector("#downloadMenu"),
+  exportButton: document.querySelector("#exportButton")
 };
 
 function makeId() {
@@ -1181,6 +1187,356 @@ elements.fileInput.addEventListener("change", (e) => {
   e.target.value = "";
 });
 
+function insertTextAtCursor(text) {
+  const input = elements.messageInput;
+  const start = input.selectionStart ?? input.value.length;
+  const end = input.selectionEnd ?? input.value.length;
+  input.value = input.value.slice(0, start) + text + input.value.slice(end);
+  const pos = start + text.length;
+  input.setSelectionRange(pos, pos);
+  input.focus();
+  autoResizeInput();
+}
+
+// Voice Input Functions
+function initSpeechRecognition(lang = "id-ID") {
+  if (state.recognition) return state.recognition;
+
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SpeechRecognition) {
+    showToast("Browser tidak mendukung fitur suara. Gunakan Web Speech API.", "error");
+    return null;
+  }
+
+  try {
+    const recognition = new SpeechRecognition();
+    recognition.continuous = false;
+    recognition.interimResults = true;
+    recognition.lang = lang;
+
+    recognition.onstart = () => {
+      state.isRecording = true;
+      updateVoiceUI();
+    };
+
+    recognition.onresult = (event) => {
+      let transcript = "";
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        if (event.results[i].isFinal) {
+          transcript += event.results[i][0].transcript;
+        }
+      }
+
+      // Insert transcription into messageInput
+      if (transcript) insertTextAtCursor(transcript + " ");
+    };
+
+    recognition.onerror = (event) => {
+      console.error("Speech recognition error:", event.error);
+      stopRecording();
+
+      let errorMsg = "Error dalam pengenalan suara.";
+      if (event.error === "no-speech") {
+        errorMsg = "Tidak ada suara terdeteksi.";
+      } else if (event.error === "audio-capture") {
+        errorMsg = "Tidak ada mikrofon ditemukan.";
+      } else if (event.error === "not-allowed") {
+        errorMsg = "Izin mikrofon ditolak. Silakan izinkan mikrofon dan coba lagi.";
+      }
+      showToast(errorMsg, "error");
+    };
+
+    recognition.onend = () => {
+      if (state.isRecording) {
+        stopRecording();
+      }
+    };
+
+    state.recognition = recognition;
+    return recognition;
+  } catch (err) {
+    console.error("Failed to initialize speech recognition:", err);
+    showToast("Gagal menginisialisasi pengenalan suara.", "error");
+    return null;
+  }
+}
+
+function startRecording() {
+  if (state.isRecording) return;
+
+  // Check if browser supports speech recognition
+  if (!window.SpeechRecognition && !window.webkitSpeechRecognition) {
+    showToast("Browser tidak mendukung fitur suara.", "error");
+    return;
+  }
+
+  // Try to initialize with Indonesian first, fallback to English
+  let recognition = initSpeechRecognition("id-ID");
+  if (!recognition) {
+    state.recognition = null;
+    recognition = initSpeechRecognition("en-US");
+  }
+  if (!recognition) return;
+
+  try {
+    recognition.start();
+  } catch (err) {
+    console.error("Failed to start recording with id-ID, trying en-US:", err);
+    state.recognition = null;
+    recognition = initSpeechRecognition("en-US");
+    if (!recognition) return;
+
+    try {
+      recognition.start();
+    } catch (err2) {
+      console.error("Failed to start recording:", err2);
+      showToast("Gagal memulai rekaman.", "error");
+    }
+  }
+}
+
+function stopRecording() {
+  if (state.recognition && state.isRecording) {
+    state.recognition.stop();
+  }
+  state.isRecording = false;
+  updateVoiceUI();
+}
+
+function updateVoiceUI() {
+  if (state.isRecording) {
+    elements.voiceButton.classList.add("recording");
+    elements.voiceIndicator.style.display = "block";
+  } else {
+    elements.voiceButton.classList.remove("recording");
+    elements.voiceIndicator.style.display = "none";
+  }
+}
+
+// Export Functions
+function formatMessageForExport(message, includeImages = true) {
+  const timestamp = new Date(message.createdAt).toLocaleString("id-ID", {
+    dateStyle: "medium",
+    timeStyle: "medium"
+  });
+
+  const roleMap = {
+    user: "Pengguna",
+    assistant: "AI",
+    system: "Sistem"
+  };
+
+  let result = `${roleMap[message.role] || message.role} [${timestamp}]\n`;
+  result += "-".repeat(50) + "\n\n";
+
+  // Add image placeholders if any
+  if (includeImages && message.images && message.images.length > 0) {
+    result += "[Image attached]\n";
+  }
+
+  // Add text content
+  if (message.content) {
+    result += `${message.content}\n`;
+  }
+
+  result += "\n\n";
+  return result;
+}
+
+function escapeHtml(text) {
+  return String(text)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
+function messageToHtml(message) {
+  const timestamp = new Date(message.createdAt).toLocaleString("id-ID", {
+    dateStyle: "medium",
+    timeStyle: "medium"
+  });
+
+  const roleMap = {
+    user: "Pengguna",
+    assistant: "AI",
+    system: "Sistem"
+  };
+
+  let html = `
+    <div style="margin: 20px 0; padding: 15px; background: ${message.role === "user" ? "#f8f9fa" : "#fff"}; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+      <div style="font-size: 14px; color: #7f8c8d; margin-bottom: 10px;">
+        <strong>${escapeHtml(roleMap[message.role] || message.role)}:</strong> | ${escapeHtml(timestamp)}
+      </div>
+  `;
+
+  if (message.images && message.images.length > 0) {
+    html += `<p style="color: #e74c3c; font-style: italic;">[Image attached]</p>`;
+  }
+
+  if (message.content) {
+    const paragraphs = String(message.content)
+      .split(/\n+/)
+      .map((line) => escapeHtml(line))
+      .join("<br>");
+    html += `<div style="white-space: pre-wrap;">${paragraphs}</div>`;
+  }
+
+  html += "</div>";
+  return html;
+}
+
+function downloadMarkdown() {
+  const activeChat = state.conversations.find(c => c.id === state.activeId);
+  if (!activeChat || !activeChat.messages.length) {
+    showToast("Tidak ada percakapan untuk diekspor.", "error");
+    return;
+  }
+
+  let content = '# Percakapan AI\n\n';
+  content += `Dicetak pada: ${new Date().toLocaleString('id-ID')}\n\n`;
+  content += '-'.repeat(50) + '\n\n';
+
+  activeChat.messages.forEach(message => {
+    content += formatMessageForExport(message);
+  });
+
+  const blob = new Blob([content], { type: 'text/markdown;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `percakapan-${Date.now()}.md`;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+
+  showToast("File Markdown berhasil diunduh!", "success");
+}
+
+function downloadTxt() {
+  const activeChat = state.conversations.find(c => c.id === state.activeId);
+  if (!activeChat || !activeChat.messages.length) {
+    showToast("Tidak ada percakapan untuk diekspor.", "error");
+    return;
+  }
+
+  let content = 'PERCAKAPAN AI\n\n';
+  content += `Dicetak pada: ${new Date().toLocaleString('id-ID')}\n\n`;
+  content += '='.repeat(50) + '\n\n';
+
+  activeChat.messages.forEach(message => {
+    content += formatMessageForExport(message);
+  });
+
+  const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `percakapan-${Date.now()}.txt`;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+
+  showToast("File Text berhasil diunduh!", "success");
+}
+
+function downloadPdf() {
+  const activeChat = state.conversations.find(c => c.id === state.activeId);
+  if (!activeChat || !activeChat.messages.length) {
+    showToast("Tidak ada percakapan untuk diekspor.", "error");
+    return;
+  }
+
+  if (typeof html2pdf === "undefined") {
+    showToast("Pustaka html2pdf belum dimuat. Coba muat ulang halaman.", "error");
+    return;
+  }
+
+  // Create a temporary container for PDF generation
+  const container = document.createElement("div");
+  container.className = "pdf-content";
+  container.style.padding = "20px";
+  container.style.fontFamily = "system-ui, -apple-system, sans-serif";
+  container.style.color = "#333";
+  container.style.maxWidth = "800px";
+  container.style.lineHeight = "1.6";
+
+  container.innerHTML = `
+    <h1 style="color: #2c3e50; margin-bottom: 10px;">Percakapan AI</h1>
+    <p style="color: #7f8c8d; margin-bottom: 30px;">Dicetak pada: ${escapeHtml(new Date().toLocaleString("id-ID"))}</p>
+    <hr style="border: none; border-top: 2px solid #ecf0f1; margin: 30px 0;">
+    ${activeChat.messages.map(messageToHtml).join("")}
+  `;
+
+  document.body.appendChild(container);
+
+  const opt = {
+    margin: 10,
+    filename: `percakapan-${Date.now()}.pdf`,
+    image: { type: "jpeg", quality: 0.98 },
+    html2canvas: { scale: 2, useCORS: true },
+    jsPDF: { unit: "mm", format: "a4", orientation: "portrait" }
+  };
+
+  html2pdf()
+    .set(opt)
+    .from(container)
+    .save()
+    .then(() => {
+      document.body.removeChild(container);
+      showToast("File PDF berhasil diunduh!", "success");
+    })
+    .catch(err => {
+      console.error("PDF export error:", err);
+      document.body.removeChild(container);
+      showToast("Gagal membuat file PDF.", "error");
+    });
+}
+
+// Event Listeners for Voice and Export
+elements.voiceButton.addEventListener("click", () => {
+  if (state.isRecording) {
+    stopRecording();
+  } else {
+    startRecording();
+  }
+});
+
+elements.exportButton.addEventListener("click", (e) => {
+  e.stopPropagation();
+  elements.downloadMenu.hidden = !elements.downloadMenu.hidden;
+});
+
+document.querySelectorAll('.export-btn').forEach(btn => {
+  btn.addEventListener('click', (e) => {
+    const format = e.target.getAttribute('data-format');
+    
+    switch(format) {
+      case 'markdown':
+        downloadMarkdown();
+        break;
+      case 'txt':
+        downloadTxt();
+        break;
+      case 'pdf':
+        downloadPdf();
+        break;
+    }
+    
+    elements.downloadMenu.hidden = true;
+  });
+});
+
+// Close download menu when clicking outside
+document.addEventListener('click', (e) => {
+  if (!elements.exportButton.contains(e.target) && !elements.downloadMenu.contains(e.target)) {
+    elements.downloadMenu.hidden = true;
+  }
+});
+
 elements.stopButton.addEventListener("click", () => state.controller?.abort());
 elements.newChatButton.addEventListener("click", newConversation);
 elements.searchInput.addEventListener("input", renderSidebar);
@@ -1234,3 +1590,10 @@ loadState();
 renderAll();
 populateSettings();
 loadServerConfig();
+initVoiceSupport();
+
+function initVoiceSupport() {
+  if (window.SpeechRecognition || window.webkitSpeechRecognition) {
+    elements.voiceButton.hidden = false;
+  }
+}

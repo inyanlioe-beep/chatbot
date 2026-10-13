@@ -106,11 +106,23 @@
               <button class="attachment-button" id="attachmentButton" type="button" title="Lampirkan file" aria-label="Lampirkan file">
                 <span aria-hidden="true">📎</span>
               </button>
+              <button class="voice-button" id="voiceButton" type="button" title="Rekam suara" aria-label="Rekam suara" hidden>
+                <span aria-hidden="true">🎤</span>
+                <span class="voice-indicator" id="voiceIndicator"></span>
+              </button>
               <textarea id="messageInput" rows="1" placeholder="Ketik pesan untuk AI Provider…" aria-label="Pesan"></textarea>
             </div>
             <input type="file" id="fileInput" hidden accept="image/*,.pdf,.doc,.docx,.txt,.md,.csv,.xlsx,.pptx" />
             <div class="composer-actions">
-              <span class="composer-hint">Enter untuk kirim · Shift+Enter untuk baris baru</span>
+              <div class="composer-actions-left">
+                <span class="composer-hint">Enter untuk kirim · Shift+Enter untuk baris baru</span>
+                <button class="export-button" id="exportButton" type="button" title="Ekspor percakapan">⬇ Ekspor</button>
+                <div class="download-menu" id="downloadMenu" hidden>
+                  <button class="export-btn" data-format="markdown">Markdown (.md)</button>
+                  <button class="export-btn" data-format="txt">Text (.txt)</button>
+                  <button class="export-btn" data-format="pdf">PDF (.pdf)</button>
+                </div>
+              </div>
               <button class="send-button" id="sendButton" type="submit">Kirim <span aria-hidden="true">↗</span></button>
               <button class="stop-button" id="stopButton" type="button" hidden>Hentikan</button>
             </div>
@@ -193,6 +205,7 @@
 
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
     <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js" defer></script>
     <script src="/docx.js" defer></script>
     <script src="/app.js" defer></script>
   </body>
