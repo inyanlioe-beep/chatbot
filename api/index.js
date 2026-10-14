@@ -1,6 +1,7 @@
 const fs = require("node:fs");
 const path = require("node:path");
 const { Readable } = require("node:stream");
+const MCPClient = require("../mcp");
 
 const ROOT_DIR = path.join(__dirname, "..");
 const DEFAULT_BASE_URL = "https://agentrouter.org/v1";
@@ -42,7 +43,8 @@ function readConfig(env = process.env) {
     model: env.ANTHROPIC_MODEL || env.OPENAI_MODEL || "gpt-4o-mini",
     provider: env.ANTHROPIC_BASE_URL || env.ANTHROPIC_API_KEY
       ? "anthropic"
-      : (env.OPENAI_PROVIDER || "openai-compatible")
+      : (env.OPENAI_PROVIDER || "openai-compatible"),
+    mcpServers: env.MCP_SERVERS || null
   };
 }
 
@@ -213,6 +215,75 @@ function getUpstreamError(body, status) {
   }
 }
 
+async function loadMCP(config) {
+  if (!config.mcpServers) return null;
+  const client = MCPClient.fromEnv(config.mcpServers);
+  if (!client) return null;
+  await client.initialize();
+  return client;
+}
+
+function mcpResultToText(result) {
+  if (typeof result === "string") return result;
+  if (!result || !Array.isArray(result.content)) return JSON.stringify(result || {});
+  return result.content.map((item) => typeof item === "string" ? item : item?.text || JSON.stringify(item)).join("\n");
+}
+
+async function proxyChatWithMCP(res, config, body, messages, mcp) {
+  const anthropic = isAnthropicConfig(config);
+
+  const temperature = Number(body.temperature);
+  const maxTokens = Number(body.maxTokens);
+  const model = typeof body.model === "string" && body.model.trim() ? body.model.trim() : config.model;
+  const boundedTemperature = Number.isFinite(temperature) ? Math.min(2, Math.max(0, temperature)) : 0.7;
+  const boundedMaxTokens = Number.isFinite(maxTokens) ? Math.min(65536, Math.max(1, Math.round(maxTokens))) : 2048;
+  const systemMessages = messages.filter((message) => message.role === "system");
+  let currentMessages = messages.filter((message) => message.role !== "system");
+  const tools = anthropic ? mcp.getAnthropicTools() : mcp.getOpenAITools();
+
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    const upstreamBody = anthropic
+      ? { model, max_tokens: boundedMaxTokens, messages: currentMessages,
+          ...(systemMessages.length ? { system: systemMessages.map((message) => extractMessageText(message.content)).join("\n\n") } : {}), tools }
+      : { model, messages: systemMessages.concat(currentMessages), stream: false, temperature: Number.isFinite(temperature) ? Math.min(2, Math.max(0, temperature)) : 0.7, max_tokens: boundedMaxTokens, tools, tool_choice: "auto" };
+    const upstream = await fetch(resolveApiUrl(config.baseUrl, anthropic ? "messages" : "chat/completions"), {
+      method: "POST",
+      headers: { Authorization: `Bearer ${config.apiKey}`, "Content-Type": "application/json", Accept: anthropic ? "application/json" : "text/event-stream, application/json" },
+      body: JSON.stringify(upstreamBody),
+      signal: AbortSignal.timeout(5 * 60 * 1000)
+    });
+    const text = await upstream.text();
+    if (!upstream.ok) return sendJson(res, upstream.status, { error: getUpstreamError(text, upstream.status) });
+    let payload;
+    try { payload = JSON.parse(text); } catch { return sendJson(res, 502, { error: "AI Provider mengembalikan JSON yang tidak valid saat memakai MCP." }); }
+
+    if (anthropic) {
+      const blocks = Array.isArray(payload.content) ? payload.content : [];
+      const toolUses = blocks.filter((block) => block?.type === "tool_use");
+      if (!toolUses.length) return sendJson(res, 200, payload);
+      currentMessages.push({ role: "assistant", content: blocks });
+      currentMessages.push({ role: "user", content: await Promise.all(toolUses.map(async (toolUse) => {
+        try { return { type: "tool_result", tool_use_id: toolUse.id, content: mcpResultToText(await mcp.callTool(toolUse.name, toolUse.input || {})) }; }
+        catch (error) { return { type: "tool_result", tool_use_id: toolUse.id, is_error: true, content: error.message }; }
+      })) });
+      continue;
+    }
+
+    const assistant = payload?.choices?.[0]?.message;
+    const toolCalls = Array.isArray(assistant?.tool_calls) ? assistant.tool_calls : [];
+    if (!toolCalls.length) return sendJson(res, 200, payload);
+    currentMessages.push(assistant);
+    for (const call of toolCalls) {
+      let args = {};
+      try { args = call.function?.arguments ? JSON.parse(call.function.arguments) : {}; } catch { /* invalid arguments are sent as empty */ }
+      let content;
+      try { content = mcpResultToText(await mcp.callTool(call.function.name, args)); } catch (error) { content = `MCP tool error: ${error.message}`; }
+      currentMessages.push({ role: "tool", tool_call_id: call.id, content });
+    }
+  }
+  return sendJson(res, 502, { error: "MCP tool call terlalu banyak dalam satu permintaan." });
+}
+
 async function proxyModels(res, config) {
   if (!config.apiKey) {
     return sendJson(res, 200, { models: [] });
@@ -251,7 +322,7 @@ async function proxyModels(res, config) {
   }
 }
 
-async function proxyChat(request, res, config) {
+async function proxyChat(request, res, config, mcp = null) {
   if (!config.apiKey) {
     return sendJson(res, 503, {
       error: "API Provider key belum dikonfigurasi. Salin .env.example menjadi .env terlebih dahulu."
@@ -270,6 +341,14 @@ async function proxyChat(request, res, config) {
     messages = validateMessages(body.messages);
   } catch (error) {
     return sendJson(res, error.statusCode || 400, { error: error.message });
+  }
+
+  if (mcp?.getTools?.().length) {
+    try {
+      return await proxyChatWithMCP(res, config, body, messages, mcp);
+    } catch (error) {
+      return sendJson(res, error.name === "AbortError" ? 499 : 502, { error: error.message });
+    }
   }
 
   const temperature = Number(body.temperature);
@@ -365,6 +444,8 @@ async function handler(request, response) {
   loadEnvFile();
   const config = readConfig(process.env);
   const url = new URL(request.url || "/", "https://example.vercel.app");
+  let mcp = null;
+  try { mcp = await loadMCP(config); } catch (error) { console.error("MCP initialization failed:", error.message); }
 
   if (request.method === "GET" && url.pathname === "/api/health") {
     return sendJson(response, 200, { status: "ok" });
@@ -375,8 +456,13 @@ async function handler(request, response) {
       apiKeyConfigured: Boolean(config.apiKey),
       baseUrl: config.baseUrl,
       model: config.model,
-      provider: config.provider
+      provider: config.provider,
+      mcp: mcp ? mcp.getStatus() : []
     });
+  }
+
+  if (request.method === "GET" && url.pathname === "/api/mcp/servers") {
+    return sendJson(response, 200, { servers: mcp ? mcp.getStatus() : [] });
   }
 
   if (request.method === "GET" && url.pathname === "/api/models") {
@@ -384,7 +470,7 @@ async function handler(request, response) {
   }
 
   if (request.method === "POST" && url.pathname === "/api/chat") {
-    return proxyChat(request, response, config);
+    return proxyChat(request, response, config, mcp);
   }
 
   if (url.pathname.startsWith("/api/")) {

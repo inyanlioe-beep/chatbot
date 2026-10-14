@@ -31,6 +31,7 @@ const state = {
 const elements = {
   activeModelLabel: document.querySelector("#activeModelLabel"),
   baseUrlInput: document.querySelector("#baseUrlInput"),
+  mcpStatus: document.querySelector("#mcpStatus"),
   chatForm: document.querySelector("#chatForm"),
   chatScroll: document.querySelector("#chatScroll"),
   closeSettingsButton: document.querySelector("#closeSettingsButton"),
@@ -934,6 +935,28 @@ function populateSettings() {
   elements.temperatureInput.value = state.settings.temperature;
   elements.maxTokensInput.value = state.settings.maxTokens;
   elements.baseUrlInput.value = state.serverConfig?.baseUrl || "Belum tersedia";
+  renderMCPStatus(state.serverConfig?.mcp || []);
+}
+
+function renderMCPStatus(servers) {
+  if (!elements.mcpStatus) return;
+  elements.mcpStatus.replaceChildren();
+  if (!servers.length) {
+    elements.mcpStatus.textContent = "Tidak ada MCP plugin aktif.";
+    return;
+  }
+  for (const server of servers) {
+    const item = document.createElement("div");
+    item.className = `mcp-server ${server.connected ? "connected" : "disconnected"}`;
+    const name = document.createElement("strong");
+    name.textContent = server.name;
+    const detail = document.createElement("span");
+    detail.textContent = server.connected
+      ? `${server.toolCount} tool tersedia`
+      : (server.error || "Tidak terhubung");
+    item.append(name, detail);
+    elements.mcpStatus.append(item);
+  }
 }
 
 function openSettings() {

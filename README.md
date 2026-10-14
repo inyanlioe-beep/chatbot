@@ -88,3 +88,18 @@ npm test
 ```
 
 Menjalankan tes server/proxy ([test/server.test.js](test/server.test.js)) dan generator `.docx` ([test/docx.test.js](test/docx.test.js)) memakai test runner bawaan Node.
+
+
+## MCP Server (plugin)
+
+Chatbot dapat memakai tool dari satu atau beberapa MCP server tanpa mengubah kode aplikasi. Tambahkan konfigurasi JSON ke `.env` melalui `MCP_SERVERS`; hapus entry tersebut untuk mencopot plugin.
+
+Contoh TinyFish untuk pencarian/informasi internet:
+
+```env
+MCP_SERVERS='{"tinyfish":{"url":"https://agent.tinyfish.ai/mcp","headers":{"X-API-Key":"your-api-key"}}}'
+```
+
+API key TinyFish disimpan hanya di server, bukan browser. Dokumentasi: https://docs.tinyfish.ai/mcp-integration
+
+Status server MCP dapat dilihat melalui `GET /api/mcp/servers` atau panel Pengaturan.

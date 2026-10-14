@@ -1852,3 +1852,10 @@ textarea:focus-visible {
     transition-duration: 0.01ms !important;
   }
 }
+
+
+.mcp-status { display: grid; gap: 8px; margin-top: 8px; }
+.mcp-server { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 9px 11px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface-soft); font-size: 0.82rem; }
+.mcp-server span { color: var(--muted); text-align: right; }
+.mcp-server.connected strong::before { content: "?"; color: #2b9b68; margin-right: 7px; }
+.mcp-server.disconnected strong::before { content: "?"; color: #c64c4c; margin-right: 7px; }

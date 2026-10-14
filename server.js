@@ -7,6 +7,15 @@ const ROOT_DIR = __dirname;
 const PUBLIC_DIR = path.join(ROOT_DIR, "public");
 const MAX_BODY_BYTES = 20 * 1024 * 1024;
 
+// Load MCP client (plugin-based)
+let MCPClient;
+try {
+  MCPClient = require("./mcp");
+} catch (err) {
+  console.warn("MCP module not found - tool support disabled:", err.message);
+  MCPClient = null;
+}
+
 const MIME_TYPES = {
   ".css": "text/css; charset=utf-8",
   ".html": "text/html; charset=utf-8",
@@ -56,7 +65,8 @@ function readConfig() {
     provider: process.env.ANTHROPIC_BASE_URL || process.env.ANTHROPIC_API_KEY
       ? "anthropic"
       : (process.env.OPENAI_PROVIDER || "openai-compatible"),
-    port: Number(process.env.PORT) || 3000
+    port: Number(process.env.PORT) || 3000,
+    mcpServers: process.env.MCP_SERVERS || null
   };
 }
 
@@ -81,6 +91,21 @@ function resolveApiUrl(baseUrl, resource) {
 
 function isAnthropicConfig(config) {
   return config.provider === "anthropic" || /\/messages$/i.test(String(config.baseUrl || "").trim());
+}
+
+/**
+ * Load MCP servers once per application instance.
+ */
+async function loadMCP(config) {
+  if (!config.mcpServers || !MCPClient) return null;
+  const client = MCPClient.fromEnv(config.mcpServers);
+  if (!client) return null;
+  await client.initialize();
+  return client;
+}
+
+function formatMCPStatus(mcp) {
+  return mcp ? mcp.getStatus() : [];
 }
 
 function sendJson(response, statusCode, payload) {
@@ -234,7 +259,109 @@ async function proxyModels(response, config) {
   }
 }
 
-async function proxyChat(request, response, config) {
+function mcpResultToText(result) {
+  if (typeof result === "string") return result;
+  if (!result || !Array.isArray(result.content)) return JSON.stringify(result || {});
+  return result.content.map((item) => {
+    if (typeof item === "string") return item;
+    if (item?.type === "text") return item.text || "";
+    return item?.text || JSON.stringify(item);
+  }).join("\n");
+}
+
+async function proxyChatWithMCP(response, config, body, messages, mcp) {
+  const anthropic = isAnthropicConfig(config);
+  const temperature = Number(body.temperature);
+  const maxTokens = Number(body.maxTokens);
+  const model = typeof body.model === "string" && body.model.trim() ? body.model.trim() : config.model;
+  const boundedTemperature = Number.isFinite(temperature) ? Math.min(2, Math.max(0, temperature)) : 0.7;
+  const boundedMaxTokens = Number.isFinite(maxTokens) ? Math.min(65536, Math.max(1, Math.round(maxTokens))) : 2048;
+  const systemMessages = messages.filter((message) => message.role === "system");
+  let currentMessages = messages.filter((message) => message.role !== "system");
+  const tools = anthropic ? mcp.getAnthropicTools() : mcp.getOpenAITools();
+
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    const upstreamBody = anthropic
+      ? {
+          model,
+          max_tokens: boundedMaxTokens,
+          messages: currentMessages,
+          ...(systemMessages.length ? { system: systemMessages.map((message) => extractMessageText(message.content)).join("\n\n") } : {}),
+          tools
+        }
+      : {
+          model,
+          messages: systemMessages.concat(currentMessages),
+          stream: false,
+          temperature: boundedTemperature,
+          max_tokens: boundedMaxTokens,
+          tools,
+          tool_choice: "auto"
+        };
+
+    const upstream = await fetch(resolveApiUrl(config.baseUrl, anthropic ? "messages" : "chat/completions"), {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${config.apiKey}`,
+        "Content-Type": "application/json",
+        Accept: "application/json"
+      },
+      body: JSON.stringify(upstreamBody),
+      signal: AbortSignal.timeout(5 * 60 * 1000)
+    });
+    const text = await upstream.text();
+    if (!upstream.ok) return sendJson(response, upstream.status, { error: getUpstreamError(text, upstream.status) });
+
+    let payload;
+    try {
+      payload = JSON.parse(text);
+    } catch {
+      return sendJson(response, 502, { error: "AI Provider mengembalikan JSON yang tidak valid saat memakai MCP." });
+    }
+
+    if (anthropic) {
+      const blocks = Array.isArray(payload.content) ? payload.content : [];
+      const toolUses = blocks.filter((block) => block?.type === "tool_use");
+      if (!toolUses.length) return sendJson(response, 200, payload);
+      currentMessages.push({ role: "assistant", content: blocks });
+      const results = [];
+      for (const toolUse of toolUses) {
+        try {
+          const result = await mcp.callTool(toolUse.name, toolUse.input || {});
+          results.push({ type: "tool_result", tool_use_id: toolUse.id, content: mcpResultToText(result) });
+        } catch (error) {
+          results.push({ type: "tool_result", tool_use_id: toolUse.id, is_error: true, content: error.message });
+        }
+      }
+      currentMessages.push({ role: "user", content: results });
+      continue;
+    }
+
+    const assistant = payload?.choices?.[0]?.message;
+    const toolCalls = Array.isArray(assistant?.tool_calls) ? assistant.tool_calls : [];
+    if (!toolCalls.length) return sendJson(response, 200, payload);
+    currentMessages.push(assistant);
+    for (const call of toolCalls) {
+      let args = {};
+      try {
+        args = call.function?.arguments ? JSON.parse(call.function.arguments) : {};
+      } catch {
+        args = {};
+      }
+      let content;
+      try {
+        content = mcpResultToText(await mcp.callTool(call.function.name, args));
+      } catch (error) {
+        content = `MCP tool error: ${error.message}`;
+      }
+      currentMessages.push({ role: "tool", tool_call_id: call.id, content });
+    }
+  }
+
+  return sendJson(response, 502, { error: "MCP tool call terlalu banyak dalam satu permintaan." });
+}
+
+async function proxyChat(request, response, config, mcp = null) {
   if (!config.apiKey) {
     return sendJson(response, 503, {
       error: "API Provider key belum dikonfigurasi. Salin .env.example menjadi .env terlebih dahulu."
@@ -245,8 +372,7 @@ async function proxyChat(request, response, config) {
   try {
     body = await parseJsonBody(request);
   } catch (error) {
-    if (!response.headersSent) sendJson(response, error.statusCode || 400, { error: error.message });
-    return;
+    return sendJson(response, error.statusCode || 400, { error: error.message });
   }
 
   let messages;
@@ -254,6 +380,14 @@ async function proxyChat(request, response, config) {
     messages = validateMessages(body.messages);
   } catch (error) {
     return sendJson(response, error.statusCode || 400, { error: error.message });
+  }
+
+  if (mcp?.getTools?.().length) {
+    try {
+      return await proxyChatWithMCP(response, config, body, messages, mcp);
+    } catch (error) {
+      return sendJson(response, error.name === "AbortError" ? 499 : 502, { error: error.message });
+    }
   }
 
   const temperature = Number(body.temperature);
@@ -267,74 +401,37 @@ async function proxyChat(request, response, config) {
     ? {
         model,
         max_tokens: boundedMaxTokens,
-        messages: messages
-          .filter((message) => message.role !== "system")
-          .map((message) => ({ role: message.role, content: toAnthropicContent(message.content) })),
-        ...(systemMessages.length
-          ? { system: systemMessages.map((message) => extractMessageText(message.content)).join("\n\n") }
-          : {})
+        messages: messages.filter((message) => message.role !== "system").map((message) => ({ role: message.role, content: toAnthropicContent(message.content) })),
+        ...(systemMessages.length ? { system: systemMessages.map((message) => extractMessageText(message.content)).join("\n\n") } : {})
       }
-    : {
-        model,
-        messages,
-        stream: true,
-        temperature: boundedTemperature,
-        max_tokens: boundedMaxTokens
-      };
+    : { model, messages, stream: true, temperature: boundedTemperature, max_tokens: boundedMaxTokens };
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 5 * 60 * 1000);
   response.on("close", () => controller.abort());
-
   try {
     const upstream = await fetch(resolveApiUrl(config.baseUrl, anthropic ? "messages" : "chat/completions"), {
       method: "POST",
-      headers: {
-        Authorization: `Bearer ${config.apiKey}`,
-        "Content-Type": "application/json",
-        Accept: anthropic ? "application/json" : "text/event-stream, application/json"
-      },
+      headers: { Authorization: `Bearer ${config.apiKey}`, "Content-Type": "application/json", Accept: anthropic ? "application/json" : "text/event-stream, application/json" },
       body: JSON.stringify(upstreamBody),
       signal: controller.signal
     });
-
     if (!upstream.ok) {
       const text = await upstream.text();
       return sendJson(response, upstream.status, { error: getUpstreamError(text, upstream.status) });
     }
-
-    const contentType = upstream.headers.get("content-type") || "application/octet-stream";
-    response.writeHead(200, {
-      "Content-Type": contentType,
-      "Cache-Control": "no-cache, no-transform",
-      Connection: "keep-alive",
-      "X-Accel-Buffering": "no",
-      "X-Content-Type-Options": "nosniff"
-    });
-
-    if (!upstream.body) {
-      response.end();
-      return;
-    }
-
+    response.writeHead(200, { "Content-Type": upstream.headers.get("content-type") || "application/octet-stream", "Cache-Control": "no-cache, no-transform", Connection: "keep-alive", "X-Accel-Buffering": "no", "X-Content-Type-Options": "nosniff" });
+    if (!upstream.body) return response.end();
     for await (const chunk of Readable.fromWeb(upstream.body)) {
-      if (!response.write(chunk)) {
-        await new Promise((resolve) => response.once("drain", resolve));
-      }
+      if (!response.write(chunk)) await new Promise((resolve) => response.once("drain", resolve));
     }
     response.end();
   } catch (error) {
     if (error.name === "AbortError") {
       if (!response.headersSent) sendJson(response, 499, { error: "Permintaan dihentikan atau melewati batas waktu." });
       else response.end();
-      return;
-    }
-
-    if (!response.headersSent) {
-      sendJson(response, 502, { error: `Tidak dapat terhubung ke AI Provider: ${error.message}` });
-    } else {
-      response.end();
-    }
+    } else if (!response.headersSent) sendJson(response, 502, { error: `Tidak dapat terhubung ke AI Provider: ${error.message}` });
+    else response.end();
   } finally {
     clearTimeout(timeout);
   }
@@ -377,6 +474,15 @@ function serveStatic(request, response, pathname) {
 }
 
 function createAppServer(config = readConfig()) {
+  let mcpPromise = null;
+  const getMCP = () => {
+    if (!mcpPromise) mcpPromise = loadMCP(config).catch((error) => {
+      console.error("MCP initialization failed:", error.message);
+      return null;
+    });
+    return mcpPromise;
+  };
+
   return http.createServer(async (request, response) => {
     const url = new URL(request.url, `http://${request.headers.host || "localhost"}`);
 
@@ -389,8 +495,13 @@ function createAppServer(config = readConfig()) {
         apiKeyConfigured: Boolean(config.apiKey),
         baseUrl: config.baseUrl,
         model: config.model,
-        provider: config.provider
+        provider: config.provider,
+        mcp: formatMCPStatus(await getMCP())
       });
+    }
+
+    if (request.method === "GET" && url.pathname === "/api/mcp/servers") {
+      return sendJson(response, 200, { servers: formatMCPStatus(await getMCP()) });
     }
 
     if (request.method === "GET" && url.pathname === "/api/models") {
@@ -398,7 +509,7 @@ function createAppServer(config = readConfig()) {
     }
 
     if (request.method === "POST" && url.pathname === "/api/chat") {
-      return proxyChat(request, response, config);
+      return proxyChat(request, response, config, await getMCP());
     }
 
     if (url.pathname.startsWith("/api/")) {
@@ -430,5 +541,7 @@ module.exports = {
   loadEnvFile,
   readConfig,
   resolveApiUrl,
-  validateMessages
+  validateMessages,
+  loadMCP,
+  proxyChatWithMCP
 };
